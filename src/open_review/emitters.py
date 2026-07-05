@@ -16,11 +16,21 @@ _SARIF_LEVEL = {"error": "error", "warning": "warning", "note": "note"}
 _GITLAB_SEVERITY = {"error": "major", "warning": "minor", "note": "info"}
 
 
+def _gh_escape(s: str, prop: bool = False) -> str:
+    """Escape a value for a GitHub Actions workflow command. Message data escapes `%`, CR and
+    LF; a *property* (file=) additionally escapes `,` and `:`. Without this a `%` or newline in
+    a message corrupts the annotation (AC-20)."""
+    s = s.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    if prop:
+        s = s.replace(",", "%2C").replace(":", "%3A")
+    return s
+
+
 def github_annotations(findings: list[Finding]) -> None:
     """Emit GitHub Actions workflow-command annotations (AC-20)."""
     for f in findings:
-        msg = f"[{f.source}] {f.message}".replace("\n", " ")
-        print(f"::{_GH_LEVEL[f.severity]} file={f.file},line={f.line}::{msg}")
+        msg = _gh_escape(f"[{f.source}] {f.message}")
+        print(f"::{_GH_LEVEL[f.severity]} file={_gh_escape(f.file, prop=True)},line={f.line}::{msg}")
 
 
 def sarif(findings: list[Finding]) -> dict:

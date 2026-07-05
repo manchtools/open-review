@@ -34,6 +34,16 @@ def test_github_annotation_format(capsys):
     assert "::notice file=b.py,line=5::" in out
 
 
+def test_github_annotation_escapes_special_chars(capsys):
+    """Regression (baseline-found): %, CR, LF in a message must be escaped or the annotation breaks."""
+    f = Finding(file="a.py", line=1, severity="warning", category="bug",
+                message="hit 100% at line\ntwo", source="ai:x")
+    emitters.github_annotations([f])
+    out = capsys.readouterr().out
+    assert "100%25 at line%0Atwo" in out  # % → %25, newline → %0A
+    assert "100% at line\ntwo" not in out  # raw form must not leak through
+
+
 def test_report_writes_sarif_and_gitlab(tmp_path):
     s = tmp_path / "out.sarif"
     g = tmp_path / "gl.json"

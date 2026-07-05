@@ -29,6 +29,9 @@ from . import router
 CODEMAP_PATH = ".open-review/codemap.md"
 # docref: end codemap-path
 
+# Per external-tool call, in seconds — bounds ast-grep/ctags on huge repos (configurable).
+_CMD_TIMEOUT = int(os.environ.get("OPEN_REVIEW_TOOL_TIMEOUT", "300"))
+
 _AI_PREFIX = "_(ai)_ "  # marks a line as an AI-generated description (vs the author's own doc)
 
 _DESCRIBE_SYSTEM = (
@@ -117,6 +120,10 @@ def _source_files(repo: str) -> list[str]:
     return sorted(f for f in proc.stdout.splitlines() if os.path.splitext(f)[1] in exts)
 
 
+#: Public entry point for the tracked source-file set (used by the CLI baseline command).
+source_files = _source_files
+
+
 def _repo_langs(repo: str) -> set[str]:
     """ast-grep language ids present (for call/import extraction) — excludes ctags-only langs."""
     return {_LANGS[ext] for f in _source_files(repo) if (ext := os.path.splitext(f)[1]) in _LANGS}
@@ -124,10 +131,13 @@ def _repo_langs(repo: str) -> set[str]:
 
 def _astgrep(pattern: str, lang: str, repo: str) -> list[dict]:
     """Raw ast-grep JSON matches (empty list on any failure — fail-soft, never crash the map)."""
-    proc = subprocess.run(
-        ["ast-grep", "run", "-p", pattern, "-l", lang, "--json", repo],
-        cwd=repo, capture_output=True, text=True,
-    )
+    try:
+        proc = subprocess.run(
+            ["ast-grep", "run", "-p", pattern, "-l", lang, "--json", repo],
+            cwd=repo, capture_output=True, text=True, timeout=_CMD_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return []
     try:
         return json.loads(proc.stdout or "[]")
     except json.JSONDecodeError:
@@ -155,10 +165,14 @@ def _ctags(repo: str) -> list[dict]:
     files = _source_files(repo)
     if not files:
         return []
-    proc = subprocess.run(
-        ["ctags", "--output-format=json", "--fields=+neKSl", "--sort=no", "-f", "-", "-L", "-"],
-        input="\n".join(files) + "\n", cwd=repo, capture_output=True, text=True,
-    )
+    try:
+        proc = subprocess.run(
+            ["ctags", "--output-format=json", "--fields=+neKSl", "--sort=no", "-f", "-", "-L", "-"],
+            input="\n".join(files) + "\n", cwd=repo, capture_output=True, text=True, timeout=_CMD_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        print("· codemap: ctags timed out — symbol layer skipped", file=sys.stderr)
+        return []
     tags = []
     for line in proc.stdout.splitlines():
         try:
@@ -632,11 +646,13 @@ def _describe(
     return result
 
 
-def generate(repo: str, describe: bool = False) -> str:
+def generate(repo: str, describe: bool = False, light: bool = False) -> str:
     """Complete deterministic, multi-language structural map: every source file, symbol (with
     signature + its own one-line description), import, navigable call edge, and module-level
     variable (AC-16, AC-16c..AC-16f). With describe=True, undocumented symbols get an opt-in,
-    iterate-cached AI description (AC-16g). Human-readable and LLM-consumable."""
+    iterate-cached AI description (AC-16g). With light=True, emit a **compact** structural-only
+    variant — one line per symbol, no docstrings/descriptions/navigable refs — that keeps
+    everything the reviewer needs at a fraction of the tokens, for small context windows (AC-16h)."""
     tags = _ctags(repo)
     files = _source_files(repo)
     syms = _symbols_from(tags)
@@ -645,7 +661,7 @@ def generate(repo: str, describe: bool = False) -> str:
     graph = _call_graph(repo, tags)
     ctag_sigs = {(t["path"], t["name"]): t.get("signature", "") for t in tags if t.get("signature")}
     details = _details(repo, syms, ctag_sigs)
-    if describe:
+    if describe and not light:  # light drops prose entirely, so it never spends describe tokens
         ranges = {(t["path"], t["name"]): (t.get("line", 0), t.get("end", t.get("line", 0))) for t in tags}
         ai_desc = _describe(repo, syms, details, _prior_ai(read(repo) or ""), ranges)
     else:
@@ -660,19 +676,27 @@ def generate(repo: str, describe: bool = False) -> str:
             return f"{tn} (L{ln})" if ln else tn
         return f"{tn} ({tf}:{ln})" if ln else f"{tn} ({tf})"
 
+    def short(target: tuple[str, str], cur: str) -> str:
+        """A compact reference (light mode): `name` same-file, `basename.name` cross-file."""
+        tf, tn = target
+        return tn if tf == cur else f"{_basename(tf)}.{tn}"
+
     def edges(node: dict, cur: str) -> str:
-        outs = sorted(ref(t, cur) for t in node["calls"])
+        r = short if light else ref
+        outs = sorted(r(t, cur) for t in node["calls"])
         outs += sorted(f"{a}?" for a in node["ambiguous"])
         return ", ".join(outs)
 
-    lines = [
-        "# open-review codemap",
-        "",
-        "_Deterministic multi-language structural map — every source file, symbol (signature +"
+    kind = " (light)" if light else ""
+    blurb = (
+        "Compact structural map for LLM context — symbols, signatures, imports, call edges,"
+        " module vars. No prose."
+        if light
+        else "Deterministic multi-language structural map — every source file, symbol (signature +"
         " its own description), import, navigable call edge, and module-level variable."
-        " Symbols via universal-ctags; call edges via ast-grep. Generated; do not hand-edit._",
-        "",
-    ]
+        " Symbols via universal-ctags; call edges via ast-grep."
+    )
+    lines = [f"# open-review codemap{kind}", "", f"_{blurb} Generated; do not hand-edit._", ""]
     for f in files:
         lines.append(f"## {f}")
         imps = sorted(set(imports.get(f, {}).values()))
@@ -680,10 +704,11 @@ def generate(repo: str, describe: bool = False) -> str:
             lines.append(f"- imports: {', '.join(imps)}")
         mv = mvars.get(f, [])
         if mv:
-            lines.append(
-                "- module vars: "
-                + ", ".join(f"{n} (L{ln})" for n, ln in sorted(mv, key=lambda x: x[1]))
-            )
+            mvsorted = sorted(mv, key=lambda x: x[1])
+            if light:
+                lines.append("- vars: " + ", ".join(n for n, _ in mvsorted))
+            else:
+                lines.append("- module vars: " + ", ".join(f"{n} (L{ln})" for n, ln in mvsorted))
         modnode = graph.get((f, "<module>"))
         if modnode and (modnode["calls"] or modnode["ambiguous"]):
             lines.append(f"- module-level calls: {edges(modnode, f)}")
@@ -693,6 +718,15 @@ def generate(repo: str, describe: bool = False) -> str:
                 continue
             seen.add((name, line))
             sig, doc = details.get((f, name), ("", ""))
+            node = graph.get((f, name))
+            if light:
+                parts = [f"{sig or name} L{line}"]  # sig already carries the name
+                if node and (node["calls"] or node["ambiguous"]):
+                    parts.append(f"→ {edges(node, f)}")
+                if node and node["called_by"]:
+                    parts.append(f"← {', '.join(sorted(short(c, f) for c in node['called_by']))}")
+                lines.append(" ".join(parts))
+                continue
             lines.append(f"### {name} (L{line})")
             if sig:
                 lines.append(f"`{sig}`")
@@ -700,7 +734,6 @@ def generate(repo: str, describe: bool = False) -> str:
                 lines.append(doc)
             elif (f, name) in ai_desc:
                 lines.append(f"{_AI_PREFIX}{ai_desc[(f, name)]}")
-            node = graph.get((f, name))
             if not node:
                 continue
             if node["calls"] or node["ambiguous"]:

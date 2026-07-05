@@ -54,6 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--describe", action="store_true",
         help="opt-in: AI one-liners for undocumented symbols (iterate-cached) [AC-16g]",
     )
+    p_codemap.add_argument(
+        "--light", action="store_true",
+        help="compact structural-only map for small context windows (no prose) [AC-16h]",
+    )
 
     p_baseline = sub.add_parser("baseline", help="full-repo baseline sweep over tracked files [P6]")
     p_baseline.add_argument("--out", default="findings.json")
@@ -61,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_baseline.add_argument("--sarif")
     p_baseline.add_argument("--gitlab-report")
     p_baseline.add_argument("--describe", action="store_true", help="AI-describe undocumented symbols in the codemap")
+    p_baseline.add_argument("--light", action="store_true", help="compact structural-only codemap")
     return parser
 
 
@@ -88,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"· open-review: {len(findings)} static finding(s) → {args.out}")
             return 0
         if args.command == "codemap":
-            codemap.write(".", codemap.generate(".", describe=args.describe))
+            codemap.write(".", codemap.generate(".", describe=args.describe, light=args.light))
             print(f"· open-review: codemap written to {codemap.CODEMAP_PATH}")
             if args.untrusted:
                 print("· open-review: fork/untrusted PR — codemap not committed")
@@ -98,10 +103,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "baseline":
             files = [
-                f for f in codemap._source_files(".")
+                f for f in codemap.source_files(".")
                 if not config.is_excluded(f, config.excludes("."))
             ]
-            cmap = codemap.generate(".", describe=args.describe)
+            cmap = codemap.generate(".", describe=args.describe, light=args.light)
             codemap.write(".", cmap)
             static_findings = static.run(files, ".")
             instr = instructions.load("HEAD", untrusted=False)
@@ -123,6 +128,9 @@ def main(argv: list[str] | None = None) -> int:
         )
     except OperationalError as e:
         print(f"open-review: {e}", file=sys.stderr)
+        return 2
+    except Exception as e:  # any crash is an operational failure (exit 2), not a finding (exit 1)
+        print(f"open-review: unexpected error: {e.__class__.__name__}: {e}", file=sys.stderr)
         return 2
 
 

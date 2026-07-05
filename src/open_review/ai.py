@@ -137,7 +137,7 @@ def _to_findings(items: list[dict], model: str) -> list[Finding]:
                 )
             )
         except (KeyError, ValueError, TypeError) as e:
-            print(f"· open-review: dropped a malformed AI finding ({e})")
+            print(f"· open-review: dropped a malformed AI finding ({e})", file=sys.stderr)
     return out
 
 
@@ -202,7 +202,10 @@ def run(
             messages.append(_assistant_message(msg))
             report_call = next((tc for tc in calls if tc.function.name == "report"), None)
             if report_call is not None:
-                findings = _to_findings(_parse_args(report_call.function.arguments).get("findings", []), model)
+                args = _parse_args(report_call.function.arguments)
+                if not args and report_call.function.arguments:
+                    print("· open-review: report args did not parse — no findings this step", file=sys.stderr)
+                findings = _to_findings(args.get("findings", []), model)
                 break
             for tc in calls:
                 print(f"·     → {tc.function.name}", file=sys.stderr)

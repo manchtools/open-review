@@ -244,6 +244,28 @@ def test_codemap_powershell_and_batch(tmp_path, monkeypatch):
     assert "deploy" in doc and "package" in doc  # Batch labels (its callable units)
 
 
+def test_codemap_light_mode_compact_but_complete(tmp_path, monkeypatch):
+    """AC-16h: light mode drops prose but keeps every symbol, signature, and call edge."""
+    (tmp_path / "util.py").write_text(
+        'def helper(x):\n    """A long human-facing docstring that light mode should drop."""\n    return x\n'
+    )
+    (tmp_path / "app.py").write_text("from util import helper\n\ndef run():\n    return helper(1)\n")
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "add", ".")
+    monkeypatch.chdir(tmp_path)
+
+    rich = codemap.generate(".")
+    lite = codemap.generate(".", light=True)
+
+    # complete: symbols + the resolved cross-file edge survive
+    assert "helper" in lite and "run" in lite
+    assert "util.helper" in lite  # compact cross-file call edge
+    # compact: prose and rich formatting are gone, and it's smaller
+    assert "A long human-facing docstring" not in lite
+    assert "### " not in lite
+    assert len(lite) < len(rich)
+
+
 def test_codemap_lists_every_source_file(tmp_path, monkeypatch):
     (tmp_path / "a.py").write_text("x = 1\n")
     (tmp_path / "sub").mkdir()

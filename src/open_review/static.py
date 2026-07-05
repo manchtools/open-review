@@ -128,6 +128,8 @@ def _astgrep_rules(files: list[str], repo: str) -> list[Finding]:
 
 
 def _gitleaks(files: list[str], repo: str) -> list[Finding]:
+    if not files:
+        return []  # nothing changed to scan — match _ruff/_shellcheck (don't scan the whole repo)
     if not shutil.which("gitleaks"):
         print("· open-review: gitleaks not found — skipping (install it, or use the full image)")
         return []
@@ -147,6 +149,8 @@ def _gitleaks(files: list[str], repo: str) -> list[Finding]:
         except OSError:
             pass
         leaks = json.loads(content) if content else []
+        if not isinstance(leaks, list):  # gitleaks should emit an array; guard other shapes
+            leaks = []
     except json.JSONDecodeError:
         print(f"· open-review: gitleaks produced no parseable output — skipping ({proc.stderr.strip()[:150]})")
         return []

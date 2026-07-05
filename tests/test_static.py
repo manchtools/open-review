@@ -40,6 +40,14 @@ def test_gitleaks_detects_secret(tmp_path, monkeypatch):
     assert out[0].severity == "error" and out[0].category == "security" and out[0].file == "a.py"
 
 
+def test_gitleaks_short_circuits_on_empty_files(tmp_path, monkeypatch):
+    """Regression (baseline-found): empty changed-file set → no scan (like ruff/shellcheck),
+    not a whole-repo scan."""
+    (tmp_path / "secret.py").write_text('token = "AKIAZ7Q2K9WL3MNP4XYD"\n')
+    monkeypatch.chdir(tmp_path)
+    assert static._gitleaks([], ".") == []  # would otherwise scan the repo and find the secret
+
+
 def test_missing_tools_skip_with_notice(monkeypatch, capsys):
     monkeypatch.setattr(shutil, "which", lambda name: None)
     assert static.run(["a.py"], ".") == []

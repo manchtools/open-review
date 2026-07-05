@@ -136,6 +136,11 @@ Each criterion is verifiable by at least one automated test. Grouped by componen
   On a later regeneration an unchanged symbol's description is **reused** from the committed
   map — only new/changed symbols spend tokens (so it must be committed to help across CI runs).
   Without the flag, or without a router, no AI call is made and the structural map is unchanged.
+- **AC-16h** Given `--light`, when the codemap is generated, then it emits a **compact**
+  structural-only variant — one line per symbol (signature + line + `→`calls + `←`callers),
+  compact refs, no docstrings/AI-descriptions/navigable paths — that preserves every symbol,
+  signature, import, call edge, and module var the reviewer needs while cutting the token
+  footprint substantially, for small context windows. `--light` never spends describe tokens.
 - **AC-17** Given a committed `.open-review/codemap.md` exists, when a PR review
   runs, then its contents are included as architectural context in the generate
   prompt.
@@ -291,7 +296,7 @@ remote-tracking ref (`origin/$GITHUB_BASE_REF`, then
 `origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME`), then `origin/main` (AC-24).
 <!-- docref: end -->
 
-<!-- docref: begin src=src/open_review/ai.py#run:268c2b45 -->
+<!-- docref: begin src=src/open_review/ai.py#run:16ee0273 -->
 When no `LLM_API_KEY` is set the AI stage prints a notice and returns no findings (a
 degraded mode, not an error, AC-3); otherwise it runs a bounded investigation loop — the
 model may call vetted toolbox actions to gather cross-file context, then calls `report`,
@@ -331,7 +336,7 @@ The vendored ast-grep ruleset is applied to the changed files, each match normal
 `Finding` (`source` = `ast-grep:<rule-id>`) — local, no service (AC-6).
 <!-- docref: end -->
 
-<!-- docref: begin src=src/open_review/static.py#_gitleaks:2bd2f330 -->
+<!-- docref: begin src=src/open_review/static.py#_gitleaks:2cb401ae -->
 gitleaks secrets are normalized to error/security `Finding`s, filtered to the changed
 files; a gitleaks missing from PATH or producing unparseable output is skipped with a
 printed notice (AC-6, AC-7).
@@ -395,7 +400,7 @@ column 0; anything indented (a local or a class field) is excluded — a languag
 no language server, no execution (AC-16d).
 <!-- docref: end -->
 
-<!-- docref: begin src=src/open_review/codemap.py#_ctags:7aeb32d6 -->
+<!-- docref: begin src=src/open_review/codemap.py#_ctags:ee471e6a -->
 The symbol layer comes from universal-ctags — one small offline binary with bundled grammars
 for 40+ languages: no language runtime, no network, no service. Absent ctags degrades to no
 symbols rather than crashing (AC-16f).
@@ -452,9 +457,11 @@ it collapses to a no-op (AC-14).
 
 ### Behavioral invariants (P5)
 
-<!-- docref: begin src=src/open_review/emitters.py#github_annotations:549ab61e -->
+<!-- docref: begin src=src/open_review/emitters.py#github_annotations:cfb52ae1 -->
 GitHub Actions workflow-command annotations are emitted per finding
-(`::error|warning|notice file=…,line=…::…`) when running under `GITHUB_ACTIONS` (AC-20).
+(`::error|warning|notice file=…,line=…::…`) when running under `GITHUB_ACTIONS`, with the
+message and properties escaped to the workflow-command spec (`%`/CR/LF, plus `,`/`:` in
+properties) so a `%` or newline can't corrupt the annotation (AC-20).
 <!-- docref: end -->
 
 <!-- docref: begin src=src/open_review/emitters.py#sarif:b8ae072d -->
