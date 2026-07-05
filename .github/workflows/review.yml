@@ -14,7 +14,7 @@ jobs:
       contents: read
       security-events: write   # SARIF upload
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0        # full history so the diff base resolves
 
@@ -51,7 +51,7 @@ jobs:
       contents: write          # push the refreshed map (direct, if allowed)
       pull-requests: write      # …or open a PR when main is protected
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Regenerate codemap
         env:
           LLM_API_KEY: ${{ secrets.OR_LLM_API_KEY }}
