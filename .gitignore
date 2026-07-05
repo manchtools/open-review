@@ -10,3 +10,5 @@ build/
 findings.json
 *.sarif
 .env
+baseline*.json
+ai.json

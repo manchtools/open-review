@@ -1,0 +1,78 @@
+# open-review on GitHub Actions — drop this into the repo you want reviewed
+# (e.g. .github/workflows/open-review.yml in open-docref).
+#
+# Prerequisites (one-time):
+#   1. Publish the image once (open-review repo → `publish` workflow), or build it yourself.
+#   2. Add repo secret  LLM_API_KEY  (Settings → Secrets → Actions).
+#   3. Commit an initial codemap so PR reviews have cross-file context — see the `codemap` job
+#      below, or run `open-review baseline` locally once and commit `.open-review/codemap.md`.
+#   4. Replace OWNER below with the org/user that published the image.
+
+name: open-review
+on:
+  pull_request: {}
+  push:
+    branches: [main]          # refresh the committed codemap on main
+
+jobs:
+  # ---- review each PR (diff-scoped) --------------------------------------------------------
+  review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # for the SARIF upload step (optional)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # full history so the diff base resolves
+
+      - name: Review the diff
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          docker run --rm \
+            -e LLM_BASE_URL=https://openrouter.ai/api/v1 \
+            -e LLM_API_KEY \
+            -e MODEL_GENERATE=deepseek/deepseek-v4-pro \
+            -e MODEL_EVALUATE=deepseek/deepseek-v4-pro \
+            -e MODEL_JUDGE=anthropic/claude-opus-4.8 \
+            -e MODEL_DESCRIBE=deepseek/deepseek-v4-flash \
+            -e LLM_PROVIDER=DeepSeek \
+            -e LLM_PROVIDER_FALLBACK=true \
+            -e GITHUB_ACTIONS=true \
+            -e GITHUB_BASE_REF="${{ github.base_ref }}" \
+            -v "$PWD":/repo -w /repo \
+            ghcr.io/OWNER/open-review:latest \
+            run --fail-on warning --sarif open-review.sarif
+          # `--fail-on warning` fails the check on any real finding; use `--fail-on off` for advisory.
+          # Findings also appear inline as GitHub annotations (GITHUB_ACTIONS=true).
+
+      - name: Upload SARIF (Security tab)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: open-review.sarif
+
+  # ---- keep the committed codemap fresh on main --------------------------------------------
+  codemap:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # to commit the refreshed map
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regenerate + commit codemap
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          docker run --rm \
+            -e LLM_BASE_URL=https://openrouter.ai/api/v1 \
+            -e LLM_API_KEY \
+            -e MODEL_DESCRIBE=deepseek/deepseek-v4-flash \
+            -e LLM_PROVIDER=DeepSeek \
+            -u "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$PWD":/repo -w /repo \
+            ghcr.io/OWNER/open-review:latest \
+            codemap --describe --commit
+          git push || true      # commit carries [skip ci]; no-op if unchanged

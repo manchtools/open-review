@@ -44,6 +44,14 @@ def test_untrusted_uses_base_version(tmp_path, monkeypatch):
     assert instructions.load(base, untrusted=True).strip() == "BASE rules"
 
 
+def test_untrusted_rejects_hostile_base(tmp_path, monkeypatch):
+    """A base ref that isn't a plain ref can't be coerced into a git option / other revision."""
+    monkeypatch.chdir(tmp_path)
+    assert instructions.load("--upload-pack=evil", untrusted=True) is None
+    assert instructions.load("bad ref with spaces", untrusted=True) is None
+    assert instructions.load("", untrusted=True) is None
+
+
 def test_system_injects_instructions():
     s = ai._system("be strict about money handling")
     assert "be strict about money handling" in s

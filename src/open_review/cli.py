@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import ai, codemap, diff, instructions, report, static
+from . import ai, codemap, config, diff, instructions, report, static
 from .errors import OperationalError
 from .findings import dump, load
 
@@ -50,6 +50,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_codemap = sub.add_parser("codemap", help="generate the committed codemap [P3]")
     p_codemap.add_argument("--commit", action="store_true", help="commit the map [skip ci]")
     p_codemap.add_argument("--untrusted", action="store_true", help="fork PR: generate but never commit")
+    p_codemap.add_argument(
+        "--describe", action="store_true",
+        help="opt-in: AI one-liners for undocumented symbols (iterate-cached) [AC-16g]",
+    )
+
+    p_baseline = sub.add_parser("baseline", help="full-repo baseline sweep over tracked files [P6]")
+    p_baseline.add_argument("--out", default="findings.json")
+    p_baseline.add_argument("--fail-on", choices=_FAIL_ON, default="warning")
+    p_baseline.add_argument("--sarif")
+    p_baseline.add_argument("--gitlab-report")
+    p_baseline.add_argument("--describe", action="store_true", help="AI-describe undocumented symbols in the codemap")
     return parser
 
 
@@ -77,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"· open-review: {len(findings)} static finding(s) → {args.out}")
             return 0
         if args.command == "codemap":
-            codemap.write(".", codemap.generate("."))
+            codemap.write(".", codemap.generate(".", describe=args.describe))
             print(f"· open-review: codemap written to {codemap.CODEMAP_PATH}")
             if args.untrusted:
                 print("· open-review: fork/untrusted PR — codemap not committed")
@@ -85,6 +96,23 @@ def main(argv: list[str] | None = None) -> int:
                 codemap.commit(".")
                 print("· open-review: codemap committed [skip ci]")
             return 0
+        if args.command == "baseline":
+            files = [
+                f for f in codemap._source_files(".")
+                if not config.is_excluded(f, config.excludes("."))
+            ]
+            cmap = codemap.generate(".", describe=args.describe)
+            codemap.write(".", cmap)
+            static_findings = static.run(files, ".")
+            instr = instructions.load("HEAD", untrusted=False)
+            ai_findings = ai.baseline(files, cmap, instr, ".")
+            findings = static_findings + ai_findings
+            dump(findings, args.out)
+            print(f"· open-review: baseline → {len(findings)} finding(s) in {args.out}; "
+                  f"codemap in {codemap.CODEMAP_PATH}")
+            return report.report(
+                findings, fail_on=args.fail_on, sarif=args.sarif, gitlab_report=args.gitlab_report
+            )
         if args.command == "report":
             findings = [f for path in args.paths for f in load(path)]
             return report.report(

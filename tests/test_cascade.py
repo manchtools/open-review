@@ -17,6 +17,20 @@ def test_cascade_collapses_without_stage_models(monkeypatch):
     assert out == findings and not out[0].dropped_by
 
 
+def test_cascade_adjudicator_sees_the_code(tmp_path, monkeypatch):
+    """Anti-false-positive: the judge receives the real code at each finding's location, and a
+    finding pointing at a nonexistent location is flagged unverifiable."""
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n\ndef bar():\n    return 2\n")
+    monkeypatch.chdir(tmp_path)
+
+    cat = cascade._catalog([_f("check bar", 4)], ".")
+    assert ">>4: def bar():" in cat  # cited line shown and marked
+    assert "def foo():" in cat  # surrounding context included so claims can be verified
+
+    ghost = cascade._catalog([_f("points nowhere", 999)], ".")
+    assert "unverifiable" in ghost  # location out of range → strong drop signal
+
+
 def test_cascade_evaluate_drops_and_retains(fake_router, tmp_path, monkeypatch):
     """AC-13/AC-15: evaluate adjudicates the candidates; a dropped finding is kept + tagged."""
     base_url, ctl = fake_router

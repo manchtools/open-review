@@ -1,0 +1,25 @@
+# open-review on GitLab CI — merge into .gitlab-ci.yml of the repo you want reviewed.
+# Set a masked CI/CD variable  LLM_API_KEY  (Settings → CI/CD → Variables).
+# Replace OWNER with the registry path that hosts the image.
+
+open-review:
+  image:
+    name: ghcr.io/OWNER/open-review:latest
+    entrypoint: [""]           # let us call the CLI directly
+  rules:
+    - if: $CI_MERGE_REQUEST_IID
+  variables:
+    LLM_BASE_URL: "https://openrouter.ai/api/v1"
+    MODEL_GENERATE: "deepseek/deepseek-v4-pro"
+    MODEL_EVALUATE: "deepseek/deepseek-v4-pro"
+    MODEL_JUDGE: "anthropic/claude-opus-4.8"
+    MODEL_DESCRIBE: "deepseek/deepseek-v4-flash"
+    LLM_PROVIDER: "DeepSeek"
+    LLM_PROVIDER_FALLBACK: "true"
+    GIT_DEPTH: 0               # full history so the diff base resolves
+  script:
+    # CI_MERGE_REQUEST_TARGET_BRANCH_NAME is read automatically for the diff base.
+    - open-review run --fail-on warning --gitlab-report gl-code-quality.json
+  artifacts:
+    reports:
+      codequality: gl-code-quality.json

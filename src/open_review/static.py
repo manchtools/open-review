@@ -17,6 +17,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 
 from .findings import Finding
@@ -111,9 +112,11 @@ def _astgrep_rules(files: list[str], repo: str) -> list[Finding]:
         except json.JSONDecodeError:
             continue
         for it in items:
+            if not it.get("file"):
+                continue  # guard: os.path.relpath('', root) raises ValueError
             out.append(
                 Finding(
-                    file=os.path.relpath(it.get("file", ""), root),
+                    file=os.path.relpath(it["file"], root),
                     line=it.get("range", {}).get("start", {}).get("line", 0) + 1,
                     severity=_ASTGREP_SEVERITY.get(it.get("severity", "warning"), "warning"),
                     category="bug",
@@ -171,4 +174,6 @@ def _gitleaks(files: list[str], repo: str) -> list[Finding]:
 
 
 def run(files: list[str], repo: str) -> list[Finding]:
-    return _ruff(files, repo) + _shellcheck(files, repo) + _astgrep_rules(files, repo) + _gitleaks(files, repo)
+    findings = _ruff(files, repo) + _shellcheck(files, repo) + _astgrep_rules(files, repo) + _gitleaks(files, repo)
+    print(f"· static: {len(findings)} finding(s) from {len(files)} changed file(s)", file=sys.stderr)
+    return findings

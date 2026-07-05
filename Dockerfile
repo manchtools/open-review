@@ -12,9 +12,10 @@ RUN apt-get update \
 # --- runtime: NO curl / wget / nc / ssh in this image (AC-26) ------------------
 FROM python:3.12-slim
 
-# git + ripgrep + shellcheck from apt (none pulls a network exfiltration CLI). No runtimes.
+# git + ripgrep + shellcheck + universal-ctags from apt (none pulls a network exfiltration
+# CLI). universal-ctags is the codemap's 40+-language symbol engine (~2MB, no runtimes).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git ripgrep shellcheck \
+ && apt-get install -y --no-install-recommends git ripgrep shellcheck universal-ctags \
  && rm -rf /var/lib/apt/lists/*
 
 # Bundled analysis tools — all local, no service (AC-25). ruff + ast-grep via pip.

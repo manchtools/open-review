@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 
 from openai import OpenAIError
 
@@ -186,9 +187,11 @@ def run(
     messages: list = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     max_steps = _max_steps()
     findings: list[Finding] = []
+    print(f"· ai: reviewing with {model} (≤{max_steps} steps)…", file=sys.stderr)
 
     try:
-        for _ in range(max_steps):
+        for step in range(max_steps):
+            print(f"·   generate step {step + 1}/{max_steps}…", file=sys.stderr)
             msg = router.chat(model, messages, tools)
             calls = msg.tool_calls or []
             if not calls:
@@ -202,14 +205,81 @@ def run(
                 findings = _to_findings(_parse_args(report_call.function.arguments).get("findings", []), model)
                 break
             for tc in calls:
+                print(f"·     → {tc.function.name}", file=sys.stderr)
                 result = toolbox.run_action(tc.function.name, _parse_args(tc.function.arguments), repo)
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
         else:
-            print(f"· open-review: reached MAX_STEPS ({max_steps}) without a report")
+            print(f"· open-review: reached MAX_STEPS ({max_steps}) without a report", file=sys.stderr)
     except OperationalError:
         raise
     except OpenAIError as e:
-        print(f"· open-review: AI stage failed ({e.__class__.__name__}) — continuing without AI findings")
+        print(f"· open-review: AI stage failed ({e.__class__.__name__}) — continuing without AI findings", file=sys.stderr)
         return []
 
-    return cascade.apply(findings)
+    print(f"· ai: {len(findings)} finding(s) from generate", file=sys.stderr)
+    return cascade.apply(findings, repo)
+
+
+def _read_batches(files: list[str], repo: str, budget: int = 20000):
+    """Group files into batches under a char budget — fewer, bounded calls."""
+    batch: list[tuple[str, str]] = []
+    size = 0
+    for f in files:
+        try:
+            with open(os.path.join(repo, f), encoding="utf-8", errors="replace") as fh:
+                content = fh.read()
+        except OSError:
+            continue
+        if len(content) > budget:
+            yield [(f, content[:budget])]
+            continue
+        if batch and size + len(content) > budget:
+            yield batch
+            batch, size = [], 0
+        batch.append((f, content))
+        size += len(content)
+    if batch:
+        yield batch
+
+
+def baseline(
+    files: list[str], codemap: str | None, instructions: str | None, repo: str
+) -> list[Finding]:
+    """Full-repo baseline sweep (Spec §Baseline; AC-29, AC-31).
+
+    One forced-`report` call per file-batch — NO investigation loop, so the message history
+    never grows. The system prompt + codemap is a byte-identical prefix across every batch
+    (provider-cached, billed once); the cheap generate model sweeps, and the cascade judges
+    the aggregated union a single time.
+    """
+    if not router.is_configured():
+        print("· open-review: no LLM_API_KEY — skipping AI baseline", file=sys.stderr)
+        return []
+    model = os.environ.get("MODEL_GENERATE") or os.environ.get("MODEL")
+    if not model:
+        print("· open-review: no MODEL / MODEL_GENERATE — skipping AI baseline", file=sys.stderr)
+        return []
+
+    prefix = _system(instructions)
+    if codemap:
+        prefix += f"\n\nRepository architecture (codemap):\n{codemap}"
+
+    findings: list[Finding] = []
+    batches = list(_read_batches(files, repo))
+    print(f"· baseline: {len(batches)} batch(es) across {len(files)} file(s)…", file=sys.stderr)
+    for i, batch in enumerate(batches, 1):
+        print(f"·   batch {i}/{len(batches)} ({len(batch)} file(s))…", file=sys.stderr)
+        body = "\n\n".join(f"### {name}\n```\n{content}\n```" for name, content in batch)
+        user = "Review these files for real bugs, security, and correctness issues:\n\n" + body
+        try:
+            data = router.call_tool(model, prefix, user, REPORT_TOOL)
+        except OperationalError:
+            raise
+        except OpenAIError as e:
+            print(f"· open-review: baseline batch failed ({e.__class__.__name__}) — skipping", file=sys.stderr)
+            continue
+        if data and data.get("findings"):
+            findings += _to_findings(data["findings"], model)
+
+    print(f"· baseline: {len(findings)} finding(s) from generate", file=sys.stderr)
+    return cascade.apply(findings, repo)

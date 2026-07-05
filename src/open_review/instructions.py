@@ -22,6 +22,10 @@ def load(base: str, untrusted: bool = False) -> str | None:
     of that same PR.
     """
     if untrusted:
+        # base flows into `git show <base>:<path>`; reject anything that isn't a plain ref so
+        # a hostile value can't be coerced into a git option or a different revision.
+        if not base or base.startswith("-") or any(c.isspace() for c in base):
+            return None
         proc = subprocess.run(
             ["git", "show", f"{base}:{INSTRUCTIONS_PATH}"], capture_output=True, text=True
         )
