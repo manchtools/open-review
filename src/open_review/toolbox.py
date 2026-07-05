@@ -97,7 +97,10 @@ def _astgrep(pattern: str, lang: str, repo: str) -> list[str]:
     root = os.path.realpath(repo)
     out = []
     for it in items:
-        rel = os.path.relpath(it.get("file", ""), root)
+        f = it.get("file")
+        if not f:
+            continue  # guard: os.path.relpath('', root) raises ValueError
+        rel = os.path.relpath(f, root)
         line = it.get("range", {}).get("start", {}).get("line", 0) + 1
         text = (it.get("text", "").strip().splitlines() or [""])[0][:160]
         out.append(f"{rel}:{line}: {text}")
