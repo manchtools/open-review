@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "open-review"
+version = "0.0.0"
+description = "Containerized, CI-agnostic, router-agnostic AI code reviewer"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "AGPL-3.0-or-later"
+dependencies = [
+    "openai>=1.0",
+]
+
+# semgrep / gitleaks / ast-grep / ripgrep / ruff are bundled in the container
+# image as system tools (see Dockerfile), not Python dependencies — this keeps
+# the installable package light.
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+open-review = "open_review.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/open_review"]
+
+[tool.ruff]
+line-length = 100

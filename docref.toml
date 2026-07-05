@@ -1,0 +1,13 @@
+# docref binds the spec's claims to the code that implements them, so
+# docs/specs/01-open-review.md can never silently drift from src/open_review/.
+# Behavioral claims are anchored per-phase as each stage is implemented;
+# structural claims (schema, allowlist, cascade stages) are anchored now.
+
+[anchors]
+exclude = [
+  "**/.venv/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/*.egg-info/**",
+  "**/.pytest_cache/**",
+]

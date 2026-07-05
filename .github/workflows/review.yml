@@ -1,0 +1,44 @@
+# Example consumer workflow — copy into your own repo.
+# Static scan gates without any LLM key; the AI review is additive.
+name: open-review
+on: pull_request
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    container: ghcr.io/OWNER/open-review:latest   # TODO: publish image, set OWNER
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }                  # base ref needed for the diff
+      - run: open-review static --out static.json
+      - uses: actions/upload-artifact@v4
+        with: { name: findings, path: static.json }
+
+  review:
+    needs: static
+    runs-on: ubuntu-latest
+    container: ghcr.io/OWNER/open-review:latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/download-artifact@v4
+        with: { name: findings }
+      - run: open-review ai --static static.json --out ai.json
+        env:
+          LLM_BASE_URL:   ${{ vars.LLM_BASE_URL }}
+          LLM_API_KEY:    ${{ secrets.LLM_API_KEY }}
+          MODEL_GENERATE: ${{ vars.MODEL_GENERATE }}
+          MODEL_EVALUATE: ${{ vars.MODEL_EVALUATE }}
+          MODEL_JUDGE:    ${{ vars.MODEL_JUDGE }}
+      - uses: actions/upload-artifact@v4
+        with: { name: findings, path: ai.json }
+
+  report:
+    needs: [static, review]
+    if: always()
+    runs-on: ubuntu-latest
+    container: ghcr.io/OWNER/open-review:latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: findings, path: . }
+      - run: open-review report *.json    # default --fail-on warning; use `off` for advisory-only
