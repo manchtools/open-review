@@ -1,44 +1,89 @@
-# Example consumer workflow — copy into your own repo.
-# Static scan gates without any LLM key; the AI review is additive.
+# open-review reviewing itself (dogfood). Config comes from the org-wide OR_* variables/secret.
 name: open-review
-on: pull_request
+on:
+  pull_request: {}
+  push:
+    branches: [main]          # refresh the committed codemap on main
 
 jobs:
-  static:
-    runs-on: ubuntu-latest
-    container: ghcr.io/OWNER/open-review:latest   # TODO: publish image, set OWNER
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }                  # base ref needed for the diff
-      - run: open-review static --out static.json
-      - uses: actions/upload-artifact@v4
-        with: { name: findings, path: static.json }
-
+  # ---- review each PR (diff-scoped) --------------------------------------------------------
   review:
-    needs: static
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    container: ghcr.io/OWNER/open-review:latest
+    permissions:
+      contents: read
+      security-events: write   # SARIF upload
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: actions/download-artifact@v4
-        with: { name: findings }
-      - run: open-review ai --static static.json --out ai.json
-        env:
-          LLM_BASE_URL:   ${{ vars.LLM_BASE_URL }}
-          LLM_API_KEY:    ${{ secrets.LLM_API_KEY }}
-          MODEL_GENERATE: ${{ vars.MODEL_GENERATE }}
-          MODEL_EVALUATE: ${{ vars.MODEL_EVALUATE }}
-          MODEL_JUDGE:    ${{ vars.MODEL_JUDGE }}
-      - uses: actions/upload-artifact@v4
-        with: { name: findings, path: ai.json }
+        with:
+          fetch-depth: 0        # full history so the diff base resolves
 
-  report:
-    needs: [static, review]
-    if: always()
+      - name: Review the diff
+        env:
+          LLM_API_KEY: ${{ secrets.OR_LLM_API_KEY }}
+        run: |
+          docker run --rm \
+            -e LLM_BASE_URL=${{ vars.OR_LLM_BASE_URL }} \
+            -e LLM_API_KEY \
+            -e MODEL_GENERATE=${{ vars.OR_MODEL_GENERATE }} \
+            -e MODEL_EVALUATE=${{ vars.OR_MODEL_EVALUATE }} \
+            -e MODEL_JUDGE=${{ vars.OR_MODEL_JUDGE }} \
+            -e MODEL_DESCRIBE=${{ vars.OR_MODEL_DESCRIBE }} \
+            -e LLM_PROVIDER=${{ vars.OR_LLM_PROVIDER }} \
+            -e LLM_PROVIDER_FALLBACK=${{ vars.OR_LLM_PROVIDER_FALLBACK }} \
+            -e GITHUB_ACTIONS=true \
+            -e GITHUB_BASE_REF="${{ github.base_ref }}" \
+            -v "$PWD":/repo -w /repo \
+            ghcr.io/manchtools/open-review:latest \
+            run --fail-on warning --sarif open-review.sarif
+
+      - name: Upload SARIF (Security tab)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: open-review.sarif
+
+  # ---- refresh the committed codemap on main merge -----------------------------------------
+  codemap:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    container: ghcr.io/OWNER/open-review:latest
+    permissions:
+      contents: write          # push the refreshed map (direct, if allowed)
+      pull-requests: write      # …or open a PR when main is protected
     steps:
-      - uses: actions/download-artifact@v4
-        with: { name: findings, path: . }
-      - run: open-review report *.json    # default --fail-on warning; use `off` for advisory-only
+      - uses: actions/checkout@v4
+      - name: Regenerate codemap
+        env:
+          LLM_API_KEY: ${{ secrets.OR_LLM_API_KEY }}
+        run: |
+          docker run --rm \
+            -e LLM_BASE_URL=${{ vars.OR_LLM_BASE_URL }} \
+            -e LLM_API_KEY \
+            -e MODEL_DESCRIBE=${{ vars.OR_MODEL_DESCRIBE }} \
+            -e LLM_PROVIDER=${{ vars.OR_LLM_PROVIDER }} \
+            -e LLM_PROVIDER_FALLBACK=${{ vars.OR_LLM_PROVIDER_FALLBACK }} \
+            -u "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$PWD":/repo -w /repo \
+            ghcr.io/manchtools/open-review:latest \
+            codemap --describe
+      - name: Commit — direct to main, or via PR if the branch is protected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          if git diff --quiet -- .open-review/codemap.md; then
+            echo "codemap unchanged"; exit 0
+          fi
+          git config user.name  "open-review"
+          git config user.email "open-review@users.noreply.github.com"
+          git add .open-review/codemap.md
+          git commit -m "docs: update open-review codemap [skip ci]"
+          if git push origin "HEAD:${{ github.ref_name }}" 2>/dev/null; then
+            echo "pushed directly to ${{ github.ref_name }}"
+          else
+            branch="open-review/codemap-${{ github.run_id }}"
+            git push origin "HEAD:${branch}"
+            gh pr create --base "${{ github.ref_name }}" --head "${branch}" \
+              --title "docs: update open-review codemap" \
+              --body "Automated codemap refresh — safe to merge." || echo "(PR already open)"
+          fi
