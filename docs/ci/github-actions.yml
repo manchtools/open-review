@@ -1,12 +1,12 @@
 # open-review on GitHub Actions — drop this into the repo you want reviewed
-# (e.g. .github/workflows/open-review.yml in open-docref).
+# (e.g. .github/workflows/open-review.yml).
 #
-# Prerequisites (one-time):
-#   1. Publish the image once (open-review repo → `publish` workflow), or build it yourself.
-#   2. Add repo secret  LLM_API_KEY  (Settings → Secrets → Actions).
-#   3. Commit an initial codemap so PR reviews have cross-file context — see the `codemap` job
-#      below, or run `open-review baseline` locally once and commit `.open-review/codemap.md`.
-#   4. Replace OWNER below with the org/user that published the image.
+# Config comes from ORG-WIDE settings (manchtools), so a consuming repo needs no per-repo setup:
+#   Secret   OR_LLM_API_KEY
+#   Vars     OR_LLM_BASE_URL  OR_MODEL_GENERATE  OR_MODEL_EVALUATE  OR_MODEL_JUDGE
+#            OR_MODEL_DESCRIBE  OR_LLM_PROVIDER  OR_LLM_PROVIDER_FALLBACK
+# The image is pulled from ghcr.io/manchtools/open-review (make the package internal/public so
+# org repos can pull it).
 
 name: open-review
 on:
@@ -29,21 +29,21 @@ jobs:
 
       - name: Review the diff
         env:
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_KEY: ${{ secrets.OR_LLM_API_KEY }}
         run: |
           docker run --rm \
-            -e LLM_BASE_URL=https://openrouter.ai/api/v1 \
+            -e LLM_BASE_URL=${{ vars.OR_LLM_BASE_URL }} \
             -e LLM_API_KEY \
-            -e MODEL_GENERATE=deepseek/deepseek-v4-pro \
-            -e MODEL_EVALUATE=deepseek/deepseek-v4-pro \
-            -e MODEL_JUDGE=anthropic/claude-opus-4.8 \
-            -e MODEL_DESCRIBE=deepseek/deepseek-v4-flash \
-            -e LLM_PROVIDER=DeepSeek \
-            -e LLM_PROVIDER_FALLBACK=true \
+            -e MODEL_GENERATE=${{ vars.OR_MODEL_GENERATE }} \
+            -e MODEL_EVALUATE=${{ vars.OR_MODEL_EVALUATE }} \
+            -e MODEL_JUDGE=${{ vars.OR_MODEL_JUDGE }} \
+            -e MODEL_DESCRIBE=${{ vars.OR_MODEL_DESCRIBE }} \
+            -e LLM_PROVIDER=${{ vars.OR_LLM_PROVIDER }} \
+            -e LLM_PROVIDER_FALLBACK=${{ vars.OR_LLM_PROVIDER_FALLBACK }} \
             -e GITHUB_ACTIONS=true \
             -e GITHUB_BASE_REF="${{ github.base_ref }}" \
             -v "$PWD":/repo -w /repo \
-            ghcr.io/OWNER/open-review:latest \
+            ghcr.io/manchtools/open-review:latest \
             run --fail-on warning --sarif open-review.sarif
           # `--fail-on warning` fails the check on any real finding; use `--fail-on off` for advisory.
           # Findings also appear inline as GitHub annotations (GITHUB_ACTIONS=true).
@@ -65,16 +65,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Regenerate codemap
         env:
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_KEY: ${{ secrets.OR_LLM_API_KEY }}
         run: |
           docker run --rm \
-            -e LLM_BASE_URL=https://openrouter.ai/api/v1 \
+            -e LLM_BASE_URL=${{ vars.OR_LLM_BASE_URL }} \
             -e LLM_API_KEY \
-            -e MODEL_DESCRIBE=deepseek/deepseek-v4-flash \
-            -e LLM_PROVIDER=DeepSeek \
+            -e MODEL_DESCRIBE=${{ vars.OR_MODEL_DESCRIBE }} \
+            -e LLM_PROVIDER=${{ vars.OR_LLM_PROVIDER }} \
+            -e LLM_PROVIDER_FALLBACK=${{ vars.OR_LLM_PROVIDER_FALLBACK }} \
             -u "$(id -u):$(id -g)" -e HOME=/tmp \
             -v "$PWD":/repo -w /repo \
-            ghcr.io/OWNER/open-review:latest \
+            ghcr.io/manchtools/open-review:latest \
             codemap --describe          # generate + write; commit handled below
       - name: Commit — direct to main, or via PR if the branch is protected
         env:

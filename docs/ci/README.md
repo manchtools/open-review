@@ -10,8 +10,10 @@ workflow commands, GitLab Code Quality, SARIF).
    - Tag this repo `vX.Y.Z` (or run the `publish` workflow manually) → it pushes
      `ghcr.io/<owner>/open-review:latest`. Any registry works; GHCR is the default.
    - Or build it in-repo: `docker build -t open-review .`
-2. **A router key.** Add `LLM_API_KEY` as a CI secret/variable. Point `LLM_BASE_URL` at any
-   OpenAI-compatible router (OpenRouter, LiteLLM, self-hosted).
+2. **Router config.** Set it **once at the org/group level** with an `OR_` prefix so every repo
+   inherits it — secret `OR_LLM_API_KEY`, variables `OR_LLM_BASE_URL`, `OR_MODEL_GENERATE`,
+   `OR_MODEL_EVALUATE`, `OR_MODEL_JUDGE`, `OR_MODEL_DESCRIBE`, `OR_LLM_PROVIDER`,
+   `OR_LLM_PROVIDER_FALLBACK`. The templates read these; consuming repos need no per-repo setup.
 3. **A committed codemap** (optional but recommended). `open-review run` reads
    `.open-review/codemap.md` for cross-file context. Generate it once and commit it — either
    run `open-review baseline` locally, or let the `codemap` job on `main` keep it fresh.
