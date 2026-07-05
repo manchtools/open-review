@@ -42,7 +42,7 @@ _(ai)_ Converts an LLM assistant message with tool calls into the chat-history d
 ### run (L171)
 `def run( diff: str, static_findings: list[Finding], codemap: str | None, instructions: str | None, repo: str, ) -> list[Finding]`
 _(ai)_ Orchestrates the multi-step AI review: builds prompt, iterates tool calls until a report is produced, then runs cascade deduplication against the repo.
-- calls: _assistant_message (L159), _max_steps (L145), _parse_args (L152), _prompt (L112), _to_findings (L125), apply (src/open_review/cascade.py:147), chat (src/open_review/router.py:221), is_configured (src/open_review/router.py:19), run_action (src/open_review/toolbox.py:191)
+- calls: _assistant_message (L159), _max_steps (L145), _parse_args (L152), _prompt (L112), _to_findings (L125), apply (src/open_review/cascade.py:147), chat (src/open_review/router.py:224), is_configured (src/open_review/router.py:19), run_action (src/open_review/toolbox.py:191)
 - called by: _run (src/open_review/cli.py:72)
 ### _read_batches (L227)
 `def _read_batches(files: list[str], repo: str, budget: int = 20000)`
@@ -51,7 +51,7 @@ Group files into batches under a char budget — fewer, bounded calls.
 ### _review_batch (L249)
 `def _review_batch(batch: list[tuple[str, str]], idx: int, total: int, model: str, prefix: str) -> list[Finding]`
 One forced-`report` call for a file batch. A failed or truncated call skips (returns [])
-- calls: _to_findings (L125), call_tool (src/open_review/router.py:178)
+- calls: _to_findings (L125), call_tool (src/open_review/router.py:181)
 - called by: baseline (L265)
 ### baseline (L265)
 `def baseline( files: list[str], codemap: str | None, instructions: str | None, repo: str ) -> list[Finding]`
@@ -78,7 +78,7 @@ _(ai)_ Formats a list of active findings into a human-readable catalog string wi
 ### adjudicate (L117)
 `def adjudicate(stage: str, model: str, findings: list[Finding], repo: str = ".") -> list[Finding]`
 Keep/drop/re-grade the active findings against the real code; dropped ones are retained
-- calls: _catalog (L108), call_tool (src/open_review/router.py:178)
+- calls: _catalog (L108), call_tool (src/open_review/router.py:181)
 - called by: apply (L147)
 ### apply (L147)
 `def apply(findings: list[Finding], repo: str = ".") -> list[Finding]`
@@ -215,7 +215,7 @@ Parse AI descriptions out of a previously committed codemap → {(file, name): (
 ### _describe (L567)
 `def _describe( repo: str, syms: dict[str, list[tuple[str, int]]], details: dict[tuple[str, str], tuple[str, str]], prior: dict[tuple[str, str], tuple[str, str]], ranges: dict[tuple[str, str], tuple[int, int]], budget: int = 15000, ) -> dict[tuple[str, str], str]`
 Opt-in AI one-liners for symbols with **no author doc** (AC-16g). Reuses a prior
-- calls: body (L605), call_tool (src/open_review/router.py:178), is_configured (src/open_review/router.py:19)
+- calls: body (L605), call_tool (src/open_review/router.py:181), is_configured (src/open_review/router.py:19)
 - called by: generate (L649)
 ### body (L605)
 `def body(f: str, name: str) -> str`
@@ -311,7 +311,7 @@ A GitLab Code Quality report (AC-21).
 ### OperationalError (L6)
 `class OperationalError(Exception)`
 open-review itself could not run — bad config, unresolved base ref, a
-- called by: _git (src/open_review/diff.py:22), call_tool (src/open_review/router.py:178), chat (src/open_review/router.py:221)
+- called by: _git (src/open_review/diff.py:22), call_tool (src/open_review/router.py:181), chat (src/open_review/router.py:224)
 
 ## src/open_review/findings.py
 - imports: dataclasses, json, pathlib
@@ -355,7 +355,7 @@ Print findings, emit CI outputs, and return the process exit code.
 
 ## src/open_review/router.py
 - imports: .errors, json, openai, os, sys
-- module vars: _REPAIR_SYSTEM (L153)
+- module vars: _REPAIR_SYSTEM (L156)
 ### is_configured (L19)
 `def is_configured() -> bool`
 True iff a router API key is present — else the AI stage is skipped (AC-3).
@@ -363,42 +363,42 @@ True iff a router API key is present — else the AI stage is skipped (AC-3).
 ### _max_tokens (L24)
 `def _max_tokens() -> int`
 Output-token cap, configurable via `LLM_MAX_TOKENS`. Small/cheap models (e.g. a cheap
-- called by: call_tool (L178), chat (L221)
+- called by: call_tool (L181), chat (L224)
 ### _extra_body (L33)
-`def _extra_body() -> dict`
+`def _extra_body(model: str = "") -> dict`
 OpenRouter provider routing, from human-friendly env:
-- called by: call_tool (L178), chat (L221)
-### _array_key (L54)
+- called by: call_tool (L181), chat (L224)
+### _array_key (L57)
 `def _array_key(tool: dict) -> str | None`
 The name of the tool's array parameter (findings / verdicts / descriptions).
-- called by: call_tool (L178)
-### _close_partial (L60)
+- called by: call_tool (L181)
+### _close_partial (L63)
 `def _close_partial(obj_text: str) -> dict | None`
 Recover a truncated object (its closing `}` cut off) by keeping the complete top-level
-- called by: _salvage (L90)
-### _salvage (L90)
+- called by: _salvage (L93)
+### _salvage (L93)
 `def _salvage(raw: str, array_key: str) -> dict | None`
 Best-effort recovery from truncated tool-call JSON: walk the result array and keep every
-- calls: _close_partial (L60)
-- called by: call_tool (L178)
-### _log_cache (L138)
+- calls: _close_partial (L63)
+- called by: call_tool (L181)
+### _log_cache (L141)
 `def _log_cache(resp) -> None`
 Surface provider-reported cached prompt tokens so cache reuse is visible in our own logs,
-- called by: call_tool (L178), chat (L221)
-### _ai_repair (L160)
+- called by: call_tool (L181), chat (L224)
+### _ai_repair (L163)
 `def _ai_repair(raw: str, tool: dict) -> dict | None`
 Last-resort repair: hand the broken string to a cheap model whose forced tool schema
-- calls: call_tool (L178)
-- called by: call_tool (L178)
-### call_tool (L178)
+- calls: call_tool (L181)
+- called by: call_tool (L181)
+### call_tool (L181)
 `def call_tool(model: str, system: str, user: str, tool: dict, repair: bool = True) -> dict | None`
 One forced-tool-call round trip; returns the parsed tool arguments, or None
-- calls: OperationalError (src/open_review/errors.py:6), _ai_repair (L160), _array_key (L54), _extra_body (L33), _log_cache (L138), _max_tokens (L24), _salvage (L90)
-- called by: _ai_repair (L160), _describe (src/open_review/codemap.py:567), _review_batch (src/open_review/ai.py:249), adjudicate (src/open_review/cascade.py:117)
-### chat (L221)
+- calls: OperationalError (src/open_review/errors.py:6), _ai_repair (L163), _array_key (L57), _extra_body (L33), _log_cache (L141), _max_tokens (L24), _salvage (L93)
+- called by: _ai_repair (L163), _describe (src/open_review/codemap.py:567), _review_batch (src/open_review/ai.py:249), adjudicate (src/open_review/cascade.py:117)
+### chat (L224)
 `def chat(model: str, messages: list, tools: list)`
 One tool-enabled turn (tool_choice=auto); returns the assistant message so the
-- calls: OperationalError (src/open_review/errors.py:6), _extra_body (L33), _log_cache (L138), _max_tokens (L24)
+- calls: OperationalError (src/open_review/errors.py:6), _extra_body (L33), _log_cache (L141), _max_tokens (L24)
 - called by: run (src/open_review/ai.py:171)
 
 ## src/open_review/static.py
@@ -868,6 +868,9 @@ The AI-repair fallback is off (returns None) unless a repair-capable model is co
 ### test_extra_body_provider_passthrough (L50)
 `def test_extra_body_provider_passthrough(monkeypatch)`
 _(ai)_ Tests that _extra_body() builds correct provider routing from LLM_PROVIDER and LLM_PROVIDER_FALLBACK env vars.
+### test_extra_body_skips_anthropic_models (L68)
+`def test_extra_body_skips_anthropic_models(monkeypatch)`
+Model-aware: an Anthropic/Claude model (the judge) is never pinned to a DeepSeek host,
 
 ## tests/test_static.py
 - imports: open_review, shutil
