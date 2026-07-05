@@ -32,6 +32,13 @@ Each criterion is verifiable by at least one automated test. Grouped by componen
   skipped with a printed notice (a degraded mode, not an operational error / not
   exit 2); the static stage still runs and its findings are reported and gated
   normally.
+- **AC-3b** Given a model returns truncated or malformed tool-call JSON (e.g. it hit
+  `max_tokens`, finish_reason `length`), when the router parses it, then it does **not**
+  crash the run: it first **salvages** every complete object from the result array
+  (including the completed key/value pairs of a cut-off trailing object, deterministically,
+  never inventing data), and only if nothing is recoverable falls back to an optional
+  cheap-model **repair** (`MODEL_REPAIR`, whose forced schema guarantees valid output). A
+  failed batch skips; the rest of the run proceeds.
 - **AC-4** Given findings, when the report step runs, then every active finding is
   printed to stdout as `SEVERITY file:line [source] message`, and dropped findings
   are printed in a separate "discarded" section (AC-15).
@@ -491,10 +498,12 @@ Files are grouped into char-budgeted batches so each AI call carries a bounded s
 the repo (token efficiency) (AC-31).
 <!-- docref: end -->
 
-<!-- docref: begin src=src/open_review/ai.py#baseline:cf219d17 -->
-Each batch is reviewed with a single forced-report call over a stable codemap-cached
-prefix — no history-growing investigation loop — then run through the same drop-tag
-cascade as diff review (AC-31).
+<!-- docref: begin src=src/open_review/ai.py#baseline:cbfccde5 -->
+Each batch is reviewed with a single forced-report call over a stable codemap-cached prefix —
+no history-growing investigation loop. Batch 1 warms the prefix cache, then the rest fan out
+concurrently (bounded by `OPEN_REVIEW_CONCURRENCY`) so they hit the warm cache; a failed or
+truncated batch skips rather than crashing. Findings then run through the same drop-tag cascade
+as diff review (AC-31).
 <!-- docref: end -->
 
 ## Security considerations

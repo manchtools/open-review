@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from openai import OpenAIError
 
@@ -245,15 +246,32 @@ def _read_batches(files: list[str], repo: str, budget: int = 20000):
         yield batch
 
 
+def _review_batch(batch: list[tuple[str, str]], idx: int, total: int, model: str, prefix: str) -> list[Finding]:
+    """One forced-`report` call for a file batch. A failed or truncated call skips (returns [])
+    rather than crashing the run; truncated tool output is salvaged upstream in the router."""
+    print(f"·   batch {idx}/{total} ({len(batch)} file(s))…", file=sys.stderr)
+    body = "\n\n".join(f"### {name}\n```\n{content}\n```" for name, content in batch)
+    user = "Review these files for real bugs, security, and correctness issues:\n\n" + body
+    try:
+        data = router.call_tool(model, prefix, user, REPORT_TOOL)
+    except OpenAIError as e:
+        print(f"· open-review: baseline batch {idx} failed ({e.__class__.__name__}) — skipping", file=sys.stderr)
+        return []
+    if data and data.get("findings"):
+        return _to_findings(data["findings"], model)
+    return []
+
+
 def baseline(
     files: list[str], codemap: str | None, instructions: str | None, repo: str
 ) -> list[Finding]:
     """Full-repo baseline sweep (Spec §Baseline; AC-29, AC-31).
 
-    One forced-`report` call per file-batch — NO investigation loop, so the message history
-    never grows. The system prompt + codemap is a byte-identical prefix across every batch
-    (provider-cached, billed once); the cheap generate model sweeps, and the cascade judges
-    the aggregated union a single time.
+    One forced-`report` call per file-batch — NO investigation loop, so the message history never
+    grows. The system prompt + codemap is a byte-identical prefix across every batch, so it lands
+    in the provider's cache. Batch 1 runs alone to *warm* that cache, then the rest fan out
+    concurrently (bounded by `OPEN_REVIEW_CONCURRENCY`, default 4) so they hit the warm cache and
+    finish in ~one batch's wall-clock. The cascade judges the aggregated union a single time.
     """
     if not router.is_configured():
         print("· open-review: no LLM_API_KEY — skipping AI baseline", file=sys.stderr)
@@ -267,22 +285,28 @@ def baseline(
     if codemap:
         prefix += f"\n\nRepository architecture (codemap):\n{codemap}"
 
-    findings: list[Finding] = []
-    batches = list(_read_batches(files, repo))
+    try:
+        budget = max(1000, int(os.environ.get("OPEN_REVIEW_BATCH_CHARS", "20000")))
+    except ValueError:
+        budget = 20000
+    batches = list(_read_batches(files, repo, budget))
     print(f"· baseline: {len(batches)} batch(es) across {len(files)} file(s)…", file=sys.stderr)
-    for i, batch in enumerate(batches, 1):
-        print(f"·   batch {i}/{len(batches)} ({len(batch)} file(s))…", file=sys.stderr)
-        body = "\n\n".join(f"### {name}\n```\n{content}\n```" for name, content in batch)
-        user = "Review these files for real bugs, security, and correctness issues:\n\n" + body
-        try:
-            data = router.call_tool(model, prefix, user, REPORT_TOOL)
-        except OperationalError:
-            raise
-        except OpenAIError as e:
-            print(f"· open-review: baseline batch failed ({e.__class__.__name__}) — skipping", file=sys.stderr)
-            continue
-        if data and data.get("findings"):
-            findings += _to_findings(data["findings"], model)
+    findings: list[Finding] = []
+    if batches:
+        findings += _review_batch(batches[0], 1, len(batches), model, prefix)  # warm the cache
+        rest = batches[1:]
+        if rest:
+            try:
+                conc = max(1, int(os.environ.get("OPEN_REVIEW_CONCURRENCY", "4")))
+            except ValueError:
+                conc = 4
+            with ThreadPoolExecutor(max_workers=conc) as ex:
+                futures = [
+                    ex.submit(_review_batch, b, i, len(batches), model, prefix)
+                    for i, b in enumerate(rest, start=2)
+                ]
+                for fut in as_completed(futures):
+                    findings += fut.result()  # OperationalError (config) re-raises here — fail loud
 
     print(f"· baseline: {len(findings)} finding(s) from generate", file=sys.stderr)
     return cascade.apply(findings, repo)

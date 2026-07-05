@@ -11,7 +11,7 @@ import json
 import os
 import sys
 
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 
 from .errors import OperationalError
 
@@ -51,6 +51,90 @@ def _extra_body() -> dict:
     return {"provider": {"order": order, "allow_fallbacks": fallback}}
 
 
+def _array_key(tool: dict) -> str | None:
+    """The name of the tool's array parameter (findings / verdicts / descriptions)."""
+    props = tool.get("function", {}).get("parameters", {}).get("properties", {})
+    return next((k for k, v in props.items() if v.get("type") == "array"), None)
+
+
+def _close_partial(obj_text: str) -> dict | None:
+    """Recover a truncated object (its closing `}` cut off) by keeping the complete top-level
+    key/value pairs and dropping the incomplete trailing one, then closing the brace."""
+    depth = 0
+    last_comma = None
+    in_str = esc = False
+    for k, c in enumerate(obj_text):
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+        elif c in "{[":
+            depth += 1
+        elif c in "}]":
+            depth -= 1
+        elif c == "," and depth == 1:
+            last_comma = k  # a top-level pair boundary — everything before it is complete
+    if last_comma is None:
+        return None
+    try:
+        return json.loads(obj_text[:last_comma] + "}")
+    except json.JSONDecodeError:
+        return None
+
+
+def _salvage(raw: str, array_key: str) -> dict | None:
+    """Best-effort recovery from truncated tool-call JSON: walk the result array and keep every
+    complete `{...}` object, dropping only the incomplete trailing one. Returns {array_key: [...]}
+    so a truncated response still yields all the findings the model did emit (AC-2)."""
+    anchor = raw.find(f'"{array_key}"')
+    start = raw.find("[", anchor) if anchor != -1 else -1
+    if start == -1:
+        return None
+    objs: list = []
+    i, n = start + 1, len(raw)
+    while i < n:
+        while i < n and raw[i] in " \t\r\n,":
+            i += 1
+        if i >= n or raw[i] != "{":
+            break
+        depth, j, in_str, esc, end = 0, i, False, False, None
+        while j < n:
+            c = raw[j]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == "\\":
+                    esc = True
+                elif c == '"':
+                    in_str = False
+            elif c == '"':
+                in_str = True
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    end = j + 1
+                    break
+            j += 1
+        if end is None:
+            partial = _close_partial(raw[i:])  # last object's `}` was cut off — keep its whole pairs
+            if partial is not None:
+                objs.append(partial)
+            break
+        try:
+            objs.append(json.loads(raw[i:end]))
+        except json.JSONDecodeError:
+            break
+        i = end
+    return {array_key: objs} if objs else None
+
+
 def _log_cache(resp) -> None:
     """Surface provider-reported cached prompt tokens so cache reuse is visible in our own logs,
     not just the router's console. Shapes vary (OpenAI `prompt_tokens_details.cached_tokens`,
@@ -66,7 +150,32 @@ def _log_cache(resp) -> None:
         print(f"· router: {cached} cached prompt token(s) reused", file=sys.stderr)
 
 
-def call_tool(model: str, system: str, user: str, tool: dict) -> dict | None:
+_REPAIR_SYSTEM = (
+    "You repair malformed or truncated JSON. The user message is a broken tool-call argument "
+    "string. Re-emit it as a single valid call to the given tool, keeping ONLY data that is "
+    "actually present — never invent, complete, or guess missing values."
+)
+
+
+def _ai_repair(raw: str, tool: dict) -> dict | None:
+    """Last-resort repair: hand the broken string to a cheap model whose forced tool schema
+    guarantees valid structured output. Only used when deterministic salvage recovered nothing;
+    off unless a repair model is configured (`MODEL_REPAIR`, else describe/generate/`MODEL`)."""
+    model = (
+        os.environ.get("MODEL_REPAIR")
+        or os.environ.get("MODEL_DESCRIBE")
+        or os.environ.get("MODEL_GENERATE")
+        or os.environ.get("MODEL")
+    )
+    if not model:
+        return None
+    try:
+        return call_tool(model, _REPAIR_SYSTEM, raw, tool, repair=False)  # repair=False: no recursion
+    except (OpenAIError, OperationalError):
+        return None
+
+
+def call_tool(model: str, system: str, user: str, tool: dict, repair: bool = True) -> dict | None:
     """One forced-tool-call round trip; returns the parsed tool arguments, or None
     if the model returned no tool call (AC-2)."""
     base_url = os.environ.get("LLM_BASE_URL")
@@ -89,7 +198,24 @@ def call_tool(model: str, system: str, user: str, tool: dict) -> dict | None:
     calls = resp.choices[0].message.tool_calls
     if not calls:
         return None
-    return json.loads(calls[0].function.arguments)
+    raw = calls[0].function.arguments
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Truncated/malformed args (model hit max_tokens mid-JSON, finish_reason "length").
+        # Salvage every complete object from the result array rather than lose the whole batch.
+        key = _array_key(tool)
+        salvaged = _salvage(raw, key) if key else None
+        if salvaged:  # deterministic first: free, instant, can't hallucinate
+            print(f"· router: recovered {len(salvaged[key])} item(s) from truncated output", file=sys.stderr)
+            return salvaged
+        if repair:  # nothing recoverable deterministically — ask a model to repair the string
+            fixed = _ai_repair(raw, tool)
+            if fixed is not None:
+                print("· router: AI-repaired malformed tool output", file=sys.stderr)
+                return fixed
+        print("· router: tool-call args did not parse (truncated?) — skipping", file=sys.stderr)
+        return None
 
 
 def chat(model: str, messages: list, tools: list):

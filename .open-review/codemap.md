@@ -6,45 +6,50 @@ _Deterministic multi-language structural map — every source file, symbol (sign
 - module vars: __version__ (L1)
 
 ## src/open_review/ai.py
-- imports: .errors, .findings, cascade, json, openai, os, router, sys, toolbox
-- module vars: SYSTEM (L23), REPORT_TOOL (L31), TOOLBOX_TOOLS (L81)
-- module-level calls: _tool (L65)
-### _tool (L65)
+- imports: .errors, .findings, cascade, concurrent.futures, json, openai, os, router, sys, toolbox
+- module vars: SYSTEM (L24), REPORT_TOOL (L32), TOOLBOX_TOOLS (L82)
+- module-level calls: _tool (L66)
+### _tool (L66)
 `def _tool(name: str, description: str, properties: dict, required: list[str]) -> dict`
 - called by: <module>
-### _system (L98)
+### _system (L99)
 `def _system(instructions: str | None) -> str`
 Base reviewer prompt, augmented with repo-provided guidance when present (AC-27).
-- called by: _prompt (L111), baseline (L248)
-### _prompt (L111)
+- called by: _prompt (L112), baseline (L265)
+### _prompt (L112)
 `def _prompt( diff: str, static_findings: list[Finding], codemap: str | None, instructions: str | None ) -> tuple[str, str]`
-- calls: _system (L98)
-- called by: run (L170)
-### _to_findings (L124)
+- calls: _system (L99)
+- called by: run (L171)
+### _to_findings (L125)
 `def _to_findings(items: list[dict], model: str) -> list[Finding]`
 - calls: Finding (src/open_review/findings.py:23)
-- called by: baseline (L248), run (L170)
-### _max_steps (L144)
+- called by: _review_batch (L249), run (L171)
+### _max_steps (L145)
 `def _max_steps() -> int`
-- called by: run (L170)
-### _parse_args (L151)
+- called by: run (L171)
+### _parse_args (L152)
 `def _parse_args(raw: str | None) -> dict`
-- called by: run (L170)
-### _assistant_message (L158)
+- called by: run (L171)
+### _assistant_message (L159)
 `def _assistant_message(msg) -> dict`
-- called by: run (L170)
-### run (L170)
+- called by: run (L171)
+### run (L171)
 `def run( diff: str, static_findings: list[Finding], codemap: str | None, instructions: str | None, repo: str, ) -> list[Finding]`
-- calls: _assistant_message (L158), _max_steps (L144), _parse_args (L151), _prompt (L111), _to_findings (L124), apply (src/open_review/cascade.py:147), chat (src/open_review/router.py:95), is_configured (src/open_review/router.py:19), run_action (src/open_review/toolbox.py:191)
+- calls: _assistant_message (L159), _max_steps (L145), _parse_args (L152), _prompt (L112), _to_findings (L125), apply (src/open_review/cascade.py:147), chat (src/open_review/router.py:221), is_configured (src/open_review/router.py:19), run_action (src/open_review/toolbox.py:191)
 - called by: _run (src/open_review/cli.py:72)
-### _read_batches (L226)
+### _read_batches (L227)
 `def _read_batches(files: list[str], repo: str, budget: int = 20000)`
 Group files into batches under a char budget — fewer, bounded calls.
-- called by: baseline (L248)
-### baseline (L248)
+- called by: baseline (L265)
+### _review_batch (L249)
+`def _review_batch(batch: list[tuple[str, str]], idx: int, total: int, model: str, prefix: str) -> list[Finding]`
+One forced-`report` call for a file batch. A failed or truncated call skips (returns [])
+- calls: _to_findings (L125), call_tool (src/open_review/router.py:178)
+- called by: baseline (L265)
+### baseline (L265)
 `def baseline( files: list[str], codemap: str | None, instructions: str | None, repo: str ) -> list[Finding]`
 Full-repo baseline sweep (Spec §Baseline; AC-29, AC-31).
-- calls: _read_batches (L226), _system (L98), _to_findings (L124), apply (src/open_review/cascade.py:147), call_tool (src/open_review/router.py:69), is_configured (src/open_review/router.py:19)
+- calls: _read_batches (L227), _review_batch (L249), _system (L99), apply (src/open_review/cascade.py:147), is_configured (src/open_review/router.py:19)
 - called by: main (src/open_review/cli.py:84)
 
 ## src/open_review/cascade.py
@@ -65,13 +70,13 @@ The source lines around a finding (cited line marked `>>`), so the judge can ver
 ### adjudicate (L117)
 `def adjudicate(stage: str, model: str, findings: list[Finding], repo: str = ".") -> list[Finding]`
 Keep/drop/re-grade the active findings against the real code; dropped ones are retained
-- calls: _catalog (L108), call_tool (src/open_review/router.py:69)
+- calls: _catalog (L108), call_tool (src/open_review/router.py:178)
 - called by: apply (L147)
 ### apply (L147)
 `def apply(findings: list[Finding], repo: str = ".") -> list[Finding]`
 Run the evaluate then judge adjudication stages if their models are configured.
 - calls: adjudicate (L117), stage_models (L85)
-- called by: baseline (src/open_review/ai.py:248), run (src/open_review/ai.py:170)
+- called by: baseline (src/open_review/ai.py:265), run (src/open_review/ai.py:171)
 
 ## src/open_review/cli.py
 - imports: .errors, .findings, ai, argparse, codemap, config, diff, instructions, report, static, sys
@@ -82,11 +87,11 @@ Run the evaluate then judge adjudication stages if their models are configured.
 - called by: main (L84)
 ### _run (L72)
 `def _run(args: argparse.Namespace) -> int`
-- calls: changed_files (src/open_review/diff.py:34), load (src/open_review/instructions.py:17), read (src/open_review/codemap.py:756), report (src/open_review/report.py:19), resolve_base (src/open_review/diff.py:11), run (src/open_review/ai.py:170), run (src/open_review/static.py:180), unified_diff (src/open_review/diff.py:29)
+- calls: changed_files (src/open_review/diff.py:34), load (src/open_review/instructions.py:17), read (src/open_review/codemap.py:756), report (src/open_review/report.py:19), resolve_base (src/open_review/diff.py:11), run (src/open_review/ai.py:171), run (src/open_review/static.py:180), unified_diff (src/open_review/diff.py:29)
 - called by: main (L84)
 ### main (L84)
 `def main(argv: list[str] | None = None) -> int`
-- calls: _run (L72), baseline (src/open_review/ai.py:248), build_parser (L21), changed_files (src/open_review/diff.py:34), commit (src/open_review/codemap.py:766), dump (src/open_review/findings.py:41), excludes (src/open_review/config.py:18), generate (src/open_review/codemap.py:649), is_excluded (src/open_review/config.py:30), load (src/open_review/findings.py:46), load (src/open_review/instructions.py:17), report (src/open_review/report.py:19), resolve_base (src/open_review/diff.py:11), run (src/open_review/static.py:180), write (src/open_review/codemap.py:749)
+- calls: _run (L72), baseline (src/open_review/ai.py:265), build_parser (L21), changed_files (src/open_review/diff.py:34), commit (src/open_review/codemap.py:766), dump (src/open_review/findings.py:41), excludes (src/open_review/config.py:18), generate (src/open_review/codemap.py:649), is_excluded (src/open_review/config.py:30), load (src/open_review/findings.py:46), load (src/open_review/instructions.py:17), report (src/open_review/report.py:19), resolve_base (src/open_review/diff.py:11), run (src/open_review/static.py:180), write (src/open_review/codemap.py:749)
 - called by: <module>
 
 ## src/open_review/codemap.py
@@ -192,7 +197,7 @@ Parse AI descriptions out of a previously committed codemap → {(file, name): (
 ### _describe (L567)
 `def _describe( repo: str, syms: dict[str, list[tuple[str, int]]], details: dict[tuple[str, str], tuple[str, str]], prior: dict[tuple[str, str], tuple[str, str]], ranges: dict[tuple[str, str], tuple[int, int]], budget: int = 15000, ) -> dict[tuple[str, str], str]`
 Opt-in AI one-liners for symbols with **no author doc** (AC-16g). Reuses a prior
-- calls: body (L605), call_tool (src/open_review/router.py:69), is_configured (src/open_review/router.py:19)
+- calls: body (L605), call_tool (src/open_review/router.py:178), is_configured (src/open_review/router.py:19)
 - called by: generate (L649)
 ### body (L605)
 `def body(f: str, name: str) -> str`
@@ -281,14 +286,14 @@ A GitLab Code Quality report (AC-21).
 ### OperationalError (L6)
 `class OperationalError(Exception)`
 open-review itself could not run — bad config, unresolved base ref, a
-- called by: _git (src/open_review/diff.py:22), call_tool (src/open_review/router.py:69), chat (src/open_review/router.py:95)
+- called by: _git (src/open_review/diff.py:22), call_tool (src/open_review/router.py:178), chat (src/open_review/router.py:221)
 
 ## src/open_review/findings.py
 - imports: dataclasses, json, pathlib
 - module vars: SEVERITIES (L18), LEVEL (L19)
 ### Finding (L23)
 `class Finding`
-- called by: _astgrep_rules (src/open_review/static.py:94), _f (tests/test_cascade.py:7), _f (tests/test_emitters.py:10), _f (tests/test_findings.py:13), _f (tests/test_report.py:7), _gitleaks (src/open_review/static.py:130), _ruff (src/open_review/static.py:35), _shellcheck (src/open_review/static.py:65), _to_findings (src/open_review/ai.py:124), load (L46), test_github_annotation_escapes_special_chars (tests/test_emitters.py:37), test_static_findings_folded_into_prompt (tests/test_ai.py:38)
+- called by: _astgrep_rules (src/open_review/static.py:94), _f (tests/test_cascade.py:7), _f (tests/test_emitters.py:10), _f (tests/test_findings.py:13), _f (tests/test_report.py:7), _gitleaks (src/open_review/static.py:130), _ruff (src/open_review/static.py:35), _shellcheck (src/open_review/static.py:65), _to_findings (src/open_review/ai.py:125), load (L46), test_github_annotation_escapes_special_chars (tests/test_emitters.py:37), test_static_findings_folded_into_prompt (tests/test_ai.py:38)
 ### __post_init__ (L34)
 `def __post_init__(self) -> None`
 ### dump (L41)
@@ -323,32 +328,51 @@ Print findings, emit CI outputs, and return the process exit code.
 
 ## src/open_review/router.py
 - imports: .errors, json, openai, os, sys
+- module vars: _REPAIR_SYSTEM (L153)
 ### is_configured (L19)
 `def is_configured() -> bool`
 True iff a router API key is present — else the AI stage is skipped (AC-3).
-- called by: _describe (src/open_review/codemap.py:567), baseline (src/open_review/ai.py:248), run (src/open_review/ai.py:170)
+- called by: _describe (src/open_review/codemap.py:567), baseline (src/open_review/ai.py:265), run (src/open_review/ai.py:171)
 ### _max_tokens (L24)
 `def _max_tokens() -> int`
 Output-token cap, configurable via `LLM_MAX_TOKENS`. Small/cheap models (e.g. a cheap
-- called by: call_tool (L69), chat (L95)
+- called by: call_tool (L178), chat (L221)
 ### _extra_body (L33)
 `def _extra_body() -> dict`
 OpenRouter provider routing, from human-friendly env:
-- called by: call_tool (L69), chat (L95)
-### _log_cache (L54)
+- called by: call_tool (L178), chat (L221)
+### _array_key (L54)
+`def _array_key(tool: dict) -> str | None`
+The name of the tool's array parameter (findings / verdicts / descriptions).
+- called by: call_tool (L178)
+### _close_partial (L60)
+`def _close_partial(obj_text: str) -> dict | None`
+Recover a truncated object (its closing `}` cut off) by keeping the complete top-level
+- called by: _salvage (L90)
+### _salvage (L90)
+`def _salvage(raw: str, array_key: str) -> dict | None`
+Best-effort recovery from truncated tool-call JSON: walk the result array and keep every
+- calls: _close_partial (L60)
+- called by: call_tool (L178)
+### _log_cache (L138)
 `def _log_cache(resp) -> None`
 Surface provider-reported cached prompt tokens so cache reuse is visible in our own logs,
-- called by: call_tool (L69), chat (L95)
-### call_tool (L69)
-`def call_tool(model: str, system: str, user: str, tool: dict) -> dict | None`
+- called by: call_tool (L178), chat (L221)
+### _ai_repair (L160)
+`def _ai_repair(raw: str, tool: dict) -> dict | None`
+Last-resort repair: hand the broken string to a cheap model whose forced tool schema
+- calls: call_tool (L178)
+- called by: call_tool (L178)
+### call_tool (L178)
+`def call_tool(model: str, system: str, user: str, tool: dict, repair: bool = True) -> dict | None`
 One forced-tool-call round trip; returns the parsed tool arguments, or None
-- calls: OperationalError (src/open_review/errors.py:6), _extra_body (L33), _log_cache (L54), _max_tokens (L24)
-- called by: _describe (src/open_review/codemap.py:567), adjudicate (src/open_review/cascade.py:117), baseline (src/open_review/ai.py:248)
-### chat (L95)
+- calls: OperationalError (src/open_review/errors.py:6), _ai_repair (L160), _array_key (L54), _extra_body (L33), _log_cache (L138), _max_tokens (L24), _salvage (L90)
+- called by: _ai_repair (L160), _describe (src/open_review/codemap.py:567), _review_batch (src/open_review/ai.py:249), adjudicate (src/open_review/cascade.py:117)
+### chat (L221)
 `def chat(model: str, messages: list, tools: list)`
 One tool-enabled turn (tool_choice=auto); returns the assistant message so the
-- calls: OperationalError (src/open_review/errors.py:6), _extra_body (L33), _log_cache (L54), _max_tokens (L24)
-- called by: run (src/open_review/ai.py:170)
+- calls: OperationalError (src/open_review/errors.py:6), _extra_body (L33), _log_cache (L138), _max_tokens (L24)
+- called by: run (src/open_review/ai.py:171)
 
 ## src/open_review/static.py
 - imports: .findings, glob, json, os, shutil, subprocess, sys, tempfile
@@ -434,7 +458,7 @@ Read-only, no-subprocess fallback when the ripgrep binary isn't present.
 `def run_action(name: str, args: dict, repo: str = ".") -> str`
 Validate against ALLOWLIST + confinement, execute read-only, return a string (AC-9).
 - calls: _blame (L159), _find_callers (L144), _grep (L135), _ident (L65), _list_tests_for (L178), _read_range (L165), _show_definition (L151)
-- called by: run (src/open_review/ai.py:170)
+- called by: run (src/open_review/ai.py:171)
 
 ## tests/conftest.py
 - imports: http.server, json, pytest, subprocess, threading
@@ -733,7 +757,18 @@ AC-15: dropped findings render in a discarded section and don't affect the gate.
 - imports: open_review
 ### test_max_tokens_default_and_override (L6)
 `def test_max_tokens_default_and_override(monkeypatch)`
-### test_extra_body_provider_passthrough (L15)
+### test_salvage_recovers_findings_from_truncated_array (L15)
+`def test_salvage_recovers_findings_from_truncated_array()`
+A truncated report keeps every complete finding plus the completed pairs of the cut-off one.
+### test_salvage_single_object_missing_closing_brace (L28)
+`def test_salvage_single_object_missing_closing_brace()`
+One big object whose `}` is truncated still yields its complete key/value pairs.
+### test_salvage_complete_array_missing_outer_brace (L37)
+`def test_salvage_complete_array_missing_outer_brace()`
+### test_ai_repair_noop_without_model (L42)
+`def test_ai_repair_noop_without_model(monkeypatch)`
+The AI-repair fallback is off (returns None) unless a repair-capable model is configured.
+### test_extra_body_provider_passthrough (L50)
 `def test_extra_body_provider_passthrough(monkeypatch)`
 
 ## tests/test_static.py
