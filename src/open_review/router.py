@@ -30,21 +30,24 @@ def _max_tokens() -> int:
         return 8000
 
 
-def _extra_body() -> dict:
+def _extra_body(model: str = "") -> dict:
     """OpenRouter provider routing, from human-friendly env:
 
-      LLM_PROVIDER           comma-separated provider names in preference order, e.g. "DeepSeek,Together"
-      LLM_PROVIDER_FALLBACK  bool (default true) — allow other providers when a preferred one
-                             can't serve the requested model
+      LLM_PROVIDER           comma-separated provider names in preference order, e.g. "StreamLake"
+      LLM_PROVIDER_FALLBACK  bool — allow other providers when a preferred one can't serve the model
 
-    Fallback defaults to **true** on purpose: one global preference list then works for a mixed
-    model set — DeepSeek-hosted models (generate/describe) pin to DeepSeek so the stable codemap
-    prefix hits its cache, while an Anthropic model like the Opus judge falls through to its own
-    provider instead of 404-ing. Set it false only if every model can be served by the listed
-    providers. Unset LLM_PROVIDER → no routing constraint."""
+    The pin is **model-aware**: an Anthropic/Claude model (the judge) is never pinned to a
+    DeepSeek-family host (OpenRouter 404s on that), so it routes to its own provider. That is what
+    makes a *hard* pin safe — set `LLM_PROVIDER_FALLBACK=false` and every DeepSeek request sticks to
+    one provider (cache locality: the codemap prefix hits the *same* provider's cache each time,
+    instead of scattering across hosts under concurrency), while the Opus judge still reaches
+    Anthropic. Unset LLM_PROVIDER → no routing constraint."""
     order = [p.strip() for p in os.environ.get("LLM_PROVIDER", "").split(",") if p.strip()]
     if not order:
         return {}
+    m = model.lower()
+    if "claude" in m or m.startswith("anthropic/"):
+        return {}  # judge: leave unpinned so it routes to Anthropic even with fallback off
     fallback = os.environ.get("LLM_PROVIDER_FALLBACK", "true").strip().lower() not in (
         "0", "false", "no", "off",
     )
@@ -192,7 +195,7 @@ def call_tool(model: str, system: str, user: str, tool: dict, repair: bool = Tru
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        extra_body=_extra_body(),
+        extra_body=_extra_body(model),
     )
     _log_cache(resp)
     calls = resp.choices[0].message.tool_calls
@@ -228,7 +231,7 @@ def chat(model: str, messages: list, tools: list):
     client = OpenAI(base_url=base_url, api_key=os.environ["LLM_API_KEY"])
     resp = client.chat.completions.create(
         model=model, max_tokens=_max_tokens(), messages=messages, tools=tools,
-        tool_choice="auto", extra_body=_extra_body(),
+        tool_choice="auto", extra_body=_extra_body(model),
     )
     _log_cache(resp)
     return resp.choices[0].message

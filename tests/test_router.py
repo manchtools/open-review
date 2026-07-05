@@ -60,6 +60,16 @@ def test_extra_body_provider_passthrough(monkeypatch):
 
     # LLM_PROVIDER_FALLBACK bool is human-friendly
     monkeypatch.setenv("LLM_PROVIDER_FALLBACK", "false")
-    assert router._extra_body()["provider"]["allow_fallbacks"] is False
+    assert router._extra_body("deepseek/deepseek-v4-pro")["provider"]["allow_fallbacks"] is False
     monkeypatch.setenv("LLM_PROVIDER_FALLBACK", "yes")
-    assert router._extra_body()["provider"]["allow_fallbacks"] is True
+    assert router._extra_body("deepseek/deepseek-v4-pro")["provider"]["allow_fallbacks"] is True
+
+
+def test_extra_body_skips_anthropic_models(monkeypatch):
+    """Model-aware: an Anthropic/Claude model (the judge) is never pinned to a DeepSeek host,
+    so a hard pin (fallback=false) is safe — the judge still reaches Anthropic."""
+    monkeypatch.setenv("LLM_PROVIDER", "StreamLake")
+    monkeypatch.setenv("LLM_PROVIDER_FALLBACK", "false")
+    assert router._extra_body("deepseek/deepseek-v4-pro")["provider"]["order"] == ["StreamLake"]
+    assert router._extra_body("anthropic/claude-opus-4.8") == {}
+    assert router._extra_body("some/claude-model") == {}
