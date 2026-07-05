@@ -57,7 +57,7 @@ One forced-`report` call for a file batch. A failed or truncated call skips (ret
 `def baseline( files: list[str], codemap: str | None, instructions: str | None, repo: str ) -> list[Finding]`
 Full-repo baseline sweep (Spec §Baseline; AC-29, AC-31).
 - calls: _read_batches (L227), _review_batch (L249), _system (L99), apply (src/open_review/cascade.py:147), is_configured (src/open_review/router.py:19)
-- called by: main (src/open_review/cli.py:107)
+- called by: main (src/open_review/cli.py:97)
 
 ## src/open_review/cascade.py
 - imports: .errors, .findings, openai, os, router, sys
@@ -89,7 +89,7 @@ Run the evaluate then judge adjudication stages if their models are configured.
 ## src/open_review/cli.py
 - imports: .errors, .findings, ai, argparse, codemap, config, diff, instructions, os, report, static, sys
 - module vars: _FAIL_ON (L19), _BOOL (L20)
-- module-level calls: main (L107)
+- module-level calls: main (L97)
 ### _env (L26)
 `def _env(name: str, default: str | None = None) -> str | None`
 _(ai)_ Reads an environment variable with an optional fallback default.
@@ -106,20 +106,16 @@ _(ai)_ Returns an env var only if it matches one of the allowed choices, otherwi
 `def build_parser() -> argparse.ArgumentParser`
 _(ai)_ Creates and returns the ArgumentParser with all subcommands (run, static, ai, report, codemap, baseline) and their options.
 - calls: _env (L26), _env_choice (L35), _envbool (L30)
-- called by: main (L107)
+- called by: main (L97)
 ### _run (L85)
 `def _run(args: argparse.Namespace) -> int`
 _(ai)_ Implements the `run` subcommand: resolves base, gathers diff and static findings, runs AI review with codemap and instructions, then reports results.
 - calls: changed_files (src/open_review/diff.py:34), load (src/open_review/instructions.py:17), read (src/open_review/codemap.py:756), report (src/open_review/report.py:19), resolve_base (src/open_review/diff.py:11), run (src/open_review/ai.py:171), run (src/open_review/static.py:180), unified_diff (src/open_review/diff.py:29)
-- called by: main (L107)
-### _normalize_or_env (L97)
-`def _normalize_or_env() -> None`
-Accept org-style `OR_`-prefixed variables directly: for each `OR_X` in the environment,
-- called by: main (L107)
-### main (L107)
+- called by: main (L97)
+### main (L97)
 `def main(argv: list[str] | None = None) -> int`
 _(ai)_ CLI entry point that dispatches to the appropriate subcommand handler (run, static, codemap, baseline, report) and translates errors to exit codes.
-- calls: _normalize_or_env (L97), _run (L85), baseline (src/open_review/ai.py:265), build_parser (L40), changed_files (src/open_review/diff.py:34), commit (src/open_review/codemap.py:766), dump (src/open_review/findings.py:41), excludes (src/open_review/config.py:18), generate (src/open_review/codemap.py:649), is_excluded (src/open_review/config.py:30), load (src/open_review/findings.py:46), load (src/open_review/instructions.py:17), report (src/open_review/report.py:19), resolve_base (src/open_review/diff.py:11), run (src/open_review/static.py:180), write (src/open_review/codemap.py:749)
+- calls: _run (L85), baseline (src/open_review/ai.py:265), build_parser (L40), changed_files (src/open_review/diff.py:34), commit (src/open_review/codemap.py:766), dump (src/open_review/findings.py:41), excludes (src/open_review/config.py:18), generate (src/open_review/codemap.py:649), is_excluded (src/open_review/config.py:30), load (src/open_review/findings.py:46), load (src/open_review/instructions.py:17), report (src/open_review/report.py:19), resolve_base (src/open_review/diff.py:11), run (src/open_review/static.py:180), write (src/open_review/codemap.py:749)
 - called by: <module>
 
 ## src/open_review/codemap.py
@@ -242,7 +238,7 @@ _(ai)_ Retrieves the source code lines for a given file and function name from a
 `def generate(repo: str, describe: bool = False, light: bool = False) -> str`
 Complete deterministic, multi-language structural map: every source file, symbol (with
 - calls: _call_graph (L489), _ctags (L158), _describe (L567), _details (L317), _imports (L420), _module_vars_from (L225), _prior_ai (L550), _source_files (L115), _symbols_from (L187), edges (L684), read (L756), ref (L671), short (L679)
-- called by: main (src/open_review/cli.py:107)
+- called by: main (src/open_review/cli.py:97)
 ### ref (L671)
 `def ref(target: tuple[str, str], cur: str) -> str`
 A navigable reference: `name (L12)` same-file, `name (path/to.py:12)` cross-file.
@@ -259,7 +255,7 @@ _(ai)_ Formats a node's outgoing call edges and ambiguous references as a comma-
 ### write (L749)
 `def write(repo: str, content: str) -> None`
 _(ai)_ Writes the given content string to the .open-review/codemap file inside the repo directory.
-- called by: main (src/open_review/cli.py:107)
+- called by: main (src/open_review/cli.py:97)
 ### read (L756)
 `def read(repo: str) -> str | None`
 Return the committed codemap contents, or None if absent/empty (AC-17).
@@ -267,7 +263,7 @@ Return the committed codemap contents, or None if absent/empty (AC-17).
 ### commit (L766)
 `def commit(repo: str, message: str = "docs: update open-review codemap [skip ci]") -> None`
 Commit the codemap with a CI-skip marker to avoid recursive runs (AC-18).
-- called by: main (src/open_review/cli.py:107)
+- called by: main (src/open_review/cli.py:97)
 
 ## src/open_review/config.py
 - imports: fnmatch, os, tomllib
@@ -275,18 +271,18 @@ Commit the codemap with a CI-skip marker to avoid recursive runs (AC-18).
 ### excludes (L18)
 `def excludes(repo: str) -> list[str]`
 _(ai)_ Loads the TOML config from .open-review.toml and returns the list of exclude patterns, or an empty list if the file is missing or invalid.
-- called by: main (src/open_review/cli.py:107)
+- called by: main (src/open_review/cli.py:97)
 ### is_excluded (L30)
 `def is_excluded(relpath: str, user_patterns: list[str]) -> bool`
 _(ai)_ Returns True if the relative file path matches any of the user-supplied glob patterns.
-- called by: main (src/open_review/cli.py:107)
+- called by: main (src/open_review/cli.py:97)
 
 ## src/open_review/diff.py
 - imports: .errors, os, subprocess
 ### resolve_base (L11)
 `def resolve_base(explicit: str | None) -> str`
 --base, else the CI target branch (as a remote-tracking ref), else origin/main.
-- called by: _run (src/open_review/cli.py:85), main (src/open_review/cli.py:107)
+- called by: _run (src/open_review/cli.py:85), main (src/open_review/cli.py:97)
 ### _git (L22)
 `def _git(*args: str) -> str`
 _(ai)_ Runs a git command with the given arguments and returns stdout, raising OperationalError on failure.
@@ -301,7 +297,7 @@ Changes introduced on HEAD since its merge-base with `base` (PR-style diff).
 `def changed_files(base: str) -> list[str]`
 _(ai)_ Returns a list of file paths changed between the given base branch and HEAD.
 - calls: _git (L22)
-- called by: _run (src/open_review/cli.py:85), main (src/open_review/cli.py:107)
+- called by: _run (src/open_review/cli.py:85), main (src/open_review/cli.py:97)
 
 ## src/open_review/emitters.py
 - imports: .findings, hashlib
@@ -343,12 +339,12 @@ _(ai)_ Validates that the severity field is one of the allowed SEVERITIES after 
 ### dump (L41)
 `def dump(findings: list[Finding], path: str | Path) -> None`
 Serialize findings to a JSON array (the inter-stage artifact).
-- called by: main (src/open_review/cli.py:107), test_roundtrip (tests/test_findings.py:19)
+- called by: main (src/open_review/cli.py:97), test_roundtrip (tests/test_findings.py:19)
 ### load (L46)
 `def load(path: str | Path) -> list[Finding]`
 Load findings from a JSON array produced by :func:`dump`.
 - calls: Finding (L23)
-- called by: main (src/open_review/cli.py:107), test_roundtrip (tests/test_findings.py:19)
+- called by: main (src/open_review/cli.py:97), test_roundtrip (tests/test_findings.py:19)
 ### worst (L51)
 `def worst(findings: list[Finding]) -> int`
 Highest severity level present, or -1 for an empty list (used by the gate).
@@ -360,7 +356,7 @@ Highest severity level present, or -1 for an empty list (used by the gate).
 ### load (L17)
 `def load(base: str, untrusted: bool = False) -> str | None`
 Return the repo instructions, or None if absent/empty.
-- called by: _run (src/open_review/cli.py:85), main (src/open_review/cli.py:107)
+- called by: _run (src/open_review/cli.py:85), main (src/open_review/cli.py:97)
 
 ## src/open_review/report.py
 - imports: .findings, emitters, json, os, pathlib
@@ -368,7 +364,7 @@ Return the repo instructions, or None if absent/empty.
 `def report( findings: list[Finding], fail_on: str = "warning", sarif: str | None = None, gitlab_report: str | None = None, ) -> int`
 Print findings, emit CI outputs, and return the process exit code.
 - calls: github_annotations (src/open_review/emitters.py:29), gitlab (src/open_review/emitters.py:61), sarif (src/open_review/emitters.py:36), worst (src/open_review/findings.py:51)
-- called by: _run (src/open_review/cli.py:85), main (src/open_review/cli.py:107)
+- called by: _run (src/open_review/cli.py:85), main (src/open_review/cli.py:97)
 
 ## src/open_review/router.py
 - imports: .errors, json, openai, os, sys
@@ -379,7 +375,7 @@ True iff a router API key is present — else the AI stage is skipped (AC-3).
 - called by: _describe (src/open_review/codemap.py:567), baseline (src/open_review/ai.py:265), run (src/open_review/ai.py:171)
 ### _max_tokens (L24)
 `def _max_tokens() -> int`
-Output-token cap, configurable via `LLM_MAX_TOKENS`. Small/cheap models (e.g. a cheap
+Output-token cap, configurable via `OR_LLM_MAX_TOKENS`. Small/cheap models (e.g. a cheap
 - called by: call_tool (L181), chat (L224)
 ### _extra_body (L33)
 `def _extra_body(model: str = "") -> dict`
@@ -449,7 +445,7 @@ _(ai)_ Runs gitleaks on the whole repo and returns security findings only for th
 `def run(files: list[str], repo: str) -> list[Finding]`
 _(ai)_ Runs all static analysis tools (ruff, shellcheck, ast-grep, gitleaks) on the changed files and returns combined findings.
 - calls: _astgrep_rules (L94), _gitleaks (L130), _ruff (L35), _shellcheck (L65)
-- called by: _run (src/open_review/cli.py:85), main (src/open_review/cli.py:107)
+- called by: _run (src/open_review/cli.py:85), main (src/open_review/cli.py:97)
 
 ## src/open_review/toolbox.py
 - imports: json, os, re, shutil, subprocess
@@ -610,7 +606,7 @@ Anti-false-positive: the judge receives the real code at each finding's location
 AC-13/AC-15: evaluate adjudicates the candidates; a dropped finding is kept + tagged.
 
 ## tests/test_cli_config.py
-- imports: open_review, os
+- imports: open_review
 ### test_env_sets_flag_defaults (L6)
 `def test_env_sets_flag_defaults(monkeypatch)`
 _(ai)_ Verifies that environment variables set default argument values for the CLI parser.
@@ -620,13 +616,7 @@ _(ai)_ Ensures explicit CLI flags take precedence over environment variable defa
 ### test_invalid_env_choice_falls_back (L28)
 `def test_invalid_env_choice_falls_back(monkeypatch)`
 _(ai)_ Checks that an invalid env choice falls back to the default without crashing.
-### test_or_prefix_env_is_normalized (L34)
-`def test_or_prefix_env_is_normalized(monkeypatch)`
-AC-CFG3: OR_-prefixed org vars are accepted directly (OR_X populates X).
-### test_bare_env_wins_over_or_prefix (L46)
-`def test_bare_env_wins_over_or_prefix(monkeypatch)`
-_(ai)_ Confirms that a bare env var takes priority over its OR_-prefixed counterpart.
-### test_unset_env_uses_builtin_default (L54)
+### test_unset_env_uses_builtin_default (L34)
 `def test_unset_env_uses_builtin_default(monkeypatch)`
 _(ai)_ Confirms that with no env vars set, built-in defaults are used for all options.
 
