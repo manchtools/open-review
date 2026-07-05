@@ -94,19 +94,3 @@ def fake_router():
     control.script = script
     yield f"http://127.0.0.1:{port}/v1", control
     srv.shutdown()
-
-
-@pytest.fixture(autouse=True)
-def offline_semgrep(tmp_path_factory, monkeypatch):
-    """Default every test to an offline, no-match semgrep rule so nothing reaches the
-    semgrep registry (network). Tests that want a real match override SEMGREP_CONFIG."""
-    rule = tmp_path_factory.mktemp("sg") / "noop.yaml"
-    rule.write_text(
-        "rules:\n"
-        "  - id: noop\n"
-        "    languages: [python]\n"
-        "    severity: INFO\n"
-        "    message: noop\n"
-        "    pattern: __open_review_never_match__\n"
-    )
-    monkeypatch.setenv("SEMGREP_CONFIG", str(rule))

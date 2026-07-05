@@ -1,13 +1,18 @@
 """Static scan stage (Spec §Static stage; AC-6, AC-7).
 
-Runs bundled semgrep (``--config`` = ``SEMGREP_CONFIG``, default ``auto``) and gitleaks
-over the changed files and normalizes their output into ``Finding`` objects. A scanner
-absent from PATH — or one whose output can't be parsed — is skipped with a printed
-notice, never a silent omission (AC-7).
+Runs fully self-contained, **local** static tools — no network, no telemetry, no
+third-party service:
+  - ruff       — Python lint / bug rules
+  - shellcheck — shell scripts
+  - gitleaks   — secrets (any language)
+  - ast-grep   — polyglot structural rules from a vendored, extensible ruleset
+Each normalizes to ``Finding`` objects. A tool absent from PATH — or one whose output
+can't be parsed — is skipped with a printed notice, never a silent omission (AC-7).
 """
 
 from __future__ import annotations
 
+import glob
 import json
 import os
 import shutil
@@ -16,36 +21,107 @@ import tempfile
 
 from .findings import Finding
 
-_SEMGREP_SEVERITY = {"ERROR": "error", "WARNING": "warning", "INFO": "note"}
+_RULES_DIR = os.path.join(os.path.dirname(__file__), "rules")
+_SHELLCHECK_SEVERITY = {"error": "error", "warning": "warning", "info": "note", "style": "note"}
+_ASTGREP_SEVERITY = {"error": "error", "warning": "warning", "info": "note", "hint": "note"}
 
 
-def _semgrep(files: list[str], repo: str) -> list[Finding]:
-    if not shutil.which("semgrep"):
-        print("· open-review: semgrep not found — skipping (install it, or use the full image)")
+def _rel(path: str, root: str) -> str:
+    """Normalize a tool-reported path (absolute or already-relative) to repo-relative."""
+    return os.path.relpath(path, root) if os.path.isabs(path) else path
+
+
+def _ruff(files: list[str], repo: str) -> list[Finding]:
+    if not shutil.which("ruff"):
+        print("· open-review: ruff not found — skipping (install it, or use the full image)")
         return []
-    if not files:
+    py = [f for f in files if f.endswith(".py")]
+    if not py:
         return []
-    cfg = os.environ.get("SEMGREP_CONFIG", "auto")
     proc = subprocess.run(
-        ["semgrep", "--config", cfg, "--json", "--quiet", "--metrics", "off", *files],
-        capture_output=True, text=True, cwd=repo,
+        ["ruff", "check", "--output-format", "json", "--", *py],
+        cwd=repo, capture_output=True, text=True,
     )
     try:
-        results = json.loads(proc.stdout)["results"]
-    except (json.JSONDecodeError, KeyError):
-        print(f"· open-review: semgrep produced no parseable output — skipping ({proc.stderr.strip()[:150]})")
+        items = json.loads(proc.stdout or "[]")
+    except json.JSONDecodeError:
+        print(f"· open-review: ruff produced no parseable output — skipping ({proc.stderr.strip()[:150]})")
         return []
+    root = os.path.realpath(repo)
     return [
         Finding(
-            file=r["path"],
-            line=r["start"]["line"],
-            severity=_SEMGREP_SEVERITY.get(r["extra"].get("severity", "WARNING"), "warning"),
-            category="bug",
-            message=r["extra"].get("message", r["check_id"]),
-            source=f"semgrep:{r['check_id'].split('.')[-1]}",
+            file=_rel(it["filename"], root),
+            line=(it.get("location") or {}).get("row", 1),
+            severity="warning",
+            category="lint",
+            message=f'{it["code"]}: {it["message"]}',
+            source=f'ruff:{it["code"]}',
         )
-        for r in results
+        for it in items
     ]
+
+
+def _shellcheck(files: list[str], repo: str) -> list[Finding]:
+    if not shutil.which("shellcheck"):
+        print("· open-review: shellcheck not found — skipping (install it, or use the full image)")
+        return []
+    sh = [f for f in files if f.endswith((".sh", ".bash"))]
+    if not sh:
+        return []
+    proc = subprocess.run(
+        ["shellcheck", "-f", "json", "--", *sh], cwd=repo, capture_output=True, text=True
+    )
+    try:
+        items = json.loads(proc.stdout or "[]")
+    except json.JSONDecodeError:
+        print(f"· open-review: shellcheck produced no parseable output — skipping ({proc.stderr.strip()[:150]})")
+        return []
+    root = os.path.realpath(repo)
+    return [
+        Finding(
+            file=_rel(it["file"], root),
+            line=it.get("line", 1),
+            severity=_SHELLCHECK_SEVERITY.get(it.get("level", "warning"), "warning"),
+            category="lint",
+            message=f'SC{it["code"]}: {it["message"]}',
+            source=f'shellcheck:SC{it["code"]}',
+        )
+        for it in items
+    ]
+
+
+def _astgrep_rules(files: list[str], repo: str) -> list[Finding]:
+    if not files:
+        return []
+    if not shutil.which("ast-grep"):
+        print("· open-review: ast-grep not found — skipping structural rules")
+        return []
+    if not os.path.isdir(_RULES_DIR):
+        return []
+    root = os.path.realpath(repo)
+    targets = [os.path.join(root, f) for f in files]
+    out: list[Finding] = []
+    for rule in sorted(glob.glob(os.path.join(_RULES_DIR, "*.yml"))):
+        proc = subprocess.run(
+            ["ast-grep", "scan", "--rule", rule, "--json", *targets],
+            cwd=repo, capture_output=True, text=True,
+        )
+        try:
+            items = json.loads(proc.stdout or "[]")
+        except json.JSONDecodeError:
+            continue
+        for it in items:
+            out.append(
+                Finding(
+                    file=os.path.relpath(it.get("file", ""), root),
+                    line=it.get("range", {}).get("start", {}).get("line", 0) + 1,
+                    severity=_ASTGREP_SEVERITY.get(it.get("severity", "warning"), "warning"),
+                    category="bug",
+                    message=it.get("message", it.get("ruleId", "")),
+                    source=f'ast-grep:{it.get("ruleId", "rule")}',
+                )
+            )
+    return out
 
 
 def _gitleaks(files: list[str], repo: str) -> list[Finding]:
@@ -95,4 +171,4 @@ def _gitleaks(files: list[str], repo: str) -> list[Finding]:
 
 
 def run(files: list[str], repo: str) -> list[Finding]:
-    return _semgrep(files, repo) + _gitleaks(files, repo)
+    return _ruff(files, repo) + _shellcheck(files, repo) + _astgrep_rules(files, repo) + _gitleaks(files, repo)

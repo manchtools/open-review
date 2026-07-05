@@ -1,0 +1,6 @@
+id: python-exec
+language: python
+severity: warning
+message: exec() runs arbitrary code — avoid it; prefer explicit calls
+rule:
+  pattern: exec($$$)

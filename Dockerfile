@@ -12,14 +12,13 @@ RUN apt-get update \
 # --- runtime: NO curl / wget / nc / ssh in this image (AC-26) ------------------
 FROM python:3.12-slim
 
-# git + ripgrep from apt (neither pulls a network exfiltration CLI). No language runtimes.
+# git + ripgrep + shellcheck from apt (none pulls a network exfiltration CLI). No runtimes.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git ripgrep \
+ && apt-get install -y --no-install-recommends git ripgrep shellcheck \
  && rm -rf /var/lib/apt/lists/*
 
-# Bundled analysis tools, pinned (AC-25).
+# Bundled analysis tools — all local, no service (AC-25). ruff + ast-grep via pip.
 RUN pip install --no-cache-dir \
-      semgrep==1.168.0 \
       ast-grep-cli==0.44.1 \
       ruff
 

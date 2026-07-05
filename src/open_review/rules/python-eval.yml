@@ -1,0 +1,6 @@
+id: python-eval
+language: python
+severity: warning
+message: eval() executes arbitrary code — avoid it; use ast.literal_eval or an explicit parser
+rule:
+  pattern: eval($$$)

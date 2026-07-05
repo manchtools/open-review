@@ -43,9 +43,10 @@ Each criterion is verifiable by at least one automated test. Grouped by componen
   stdout and annotations; operational failure exits `2` (distinct from findings).
 
 ### Static stage `[P1]`
-- **AC-6** Given changed files, when the static stage runs, then bundled `semgrep`
-  (`--config` per `SEMGREP_CONFIG`, default `auto`) and `gitleaks` are executed and
-  their output is normalized into `Finding` objects with `source` set to the tool.
+- **AC-6** Given changed files, when the static stage runs, then the bundled **local**
+  tools — `ruff` (Python), `shellcheck` (shell), `gitleaks` (secrets), and `ast-grep` with
+  a vendored ruleset (polyglot structural) — are executed and normalized into `Finding`
+  objects with `source` set to the tool. **No network, telemetry, or third-party service.**
 - **AC-7** Given a bundled scanner is absent from PATH, when the static stage runs,
   then it prints a skip notice for that scanner and continues (no crash, no silent
   omission).
@@ -129,8 +130,8 @@ Each criterion is verifiable by at least one automated test. Grouped by componen
 
 ### Packaging `[P5]`
 - **AC-25** Given the published container, when built, then the default image
-  bundles semgrep + gitleaks + ast-grep + ripgrep + ruff and contains **no** bundled
-  language runtime (node/ruby/go toolchains).
+  bundles ruff + shellcheck + gitleaks + ast-grep + ripgrep and contains **no** bundled
+  language runtime (node/ruby/go toolchains) and **no** network-dependent scanner.
 - **AC-26** Given the built runtime image, when inspected, then it contains no
   network/exfiltration CLI tools (`curl`, `wget`, `nc`, `ssh`): build-time downloads
   run in a discarded builder stage (multi-stage build). Defense-in-depth — shrinks the
@@ -152,11 +153,10 @@ Each criterion is verifiable by at least one automated test. Grouped by componen
 ## Technical design
 
 **Language & packaging.** Python 3.12 CLI (single console entrypoint `open-review`),
-shipped as one container image. Rationale: bundling semgrep forces a Python runtime
-into the image regardless of orchestrator language, so a Python orchestrator rides
-that runtime for free — a Go binary would add a second runtime on top. (We shell out
-to semgrep; its language doesn't otherwise bind ours. If semgrep ever moved to a
-sidecar, a static Go/Rust core would win on size — out of scope here.)
+shipped as one container image. All analysis tools are separate binaries we shell out to,
+so the orchestrator language is a free choice; Python is used for the OpenAI SDK and fast
+iteration. (A static Go/Rust core would yield a smaller image and is a plausible future
+rewrite — out of scope here.)
 
 **Components (internal stages, one binary):**
 
@@ -192,14 +192,14 @@ through one router (e.g. local Ollama for generate, frontier for judge).
 
 **Dependencies (justified):**
 - `openai` — OpenAI-compatible router calls (LiteLLM/OpenRouter/self-hosted).
-- `semgrep` — bundled polyglot bug rules (`--config auto` infers per language). The
-  single heavy dependency (~300MB); bundling is accepted per stakeholder decision.
-- `gitleaks`, `ast-grep`, `ripgrep`, `ruff` — small static binaries (secrets,
-  structural retrieval, search, python baseline). No language runtimes bundled.
+- `ruff`, `shellcheck`, `gitleaks`, `ast-grep`, `ripgrep` — small, local static binaries
+  (Python lint, shell lint, secrets, structural rules/retrieval, search). **All fully
+  offline — no network, telemetry, or third-party service.** No language runtimes bundled.
 - git CLI — diff extraction and codemap commit.
 
-**Image size target.** ≤ 500MB is the aspiration; with semgrep bundled the accepted
-ceiling is ~600MB. No language runtimes bundled (AC-25).
+**Image size target.** ≤ 500MB — achievable now that the service-dependent semgrep is
+replaced by small local binaries (ruff/shellcheck/gitleaks/ast-grep). No language runtimes
+bundled (AC-25).
 
 ## Code-bound invariants (docref)
 
@@ -265,10 +265,15 @@ prompt unchanged (AC-27).
 
 ### Behavioral invariants (P1)
 
-<!-- docref: begin src=src/open_review/static.py#_semgrep:d1dbdb18 -->
-semgrep findings are normalized to `Finding`s (severity mapped from ERROR/WARNING/INFO,
-`source` = `semgrep:<rule>`); a semgrep missing from PATH or producing unparseable output
-is skipped with a printed notice, never a silent omission (AC-6, AC-7).
+<!-- docref: begin src=src/open_review/static.py#_ruff:d846d4c8 -->
+ruff findings are normalized to `Finding`s (`source` = `ruff:<code>`); a ruff missing from
+PATH or producing unparseable output is skipped with a printed notice, never a silent
+omission (AC-6, AC-7).
+<!-- docref: end -->
+
+<!-- docref: begin src=src/open_review/static.py#_astgrep_rules:404e379a -->
+The vendored ast-grep ruleset is applied to the changed files, each match normalized to a
+`Finding` (`source` = `ast-grep:<rule-id>`) — local, no service (AC-6).
 <!-- docref: end -->
 
 <!-- docref: begin src=src/open_review/static.py#_gitleaks:2bd2f330 -->
@@ -386,7 +391,7 @@ tool calls). Mapping:
 | diff→findings happy path against a fixture repo | AC-1, AC-2 |
 | no `LLM_API_KEY` → static-only, degraded (not exit 2) | AC-3 |
 | report formatting + `--fail-on` thresholds (note/warning/error) | AC-4, AC-5 |
-| semgrep+gitleaks normalization + missing-tool skip | AC-6, AC-7 |
+| ruff/shellcheck/ast-grep-rules/gitleaks normalization + missing-tool skip | AC-6, AC-7 |
 | static findings appear in AI prompt | AC-8 |
 | toolbox allowlist rejects non-allowlisted action | AC-9 |
 | executor env has no `LLM_API_KEY`/`*_TOKEN` | AC-10 |
