@@ -78,10 +78,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          if git diff --quiet -- .open-review/codemap.md; then echo "codemap unchanged"; exit 0; fi
           git config user.name  "open-review"
           git config user.email "open-review@users.noreply.github.com"
           git add .open-review/codemap.md
+          if git diff --cached --quiet; then echo "codemap unchanged"; exit 0; fi
           git commit -m "docs: update open-review codemap [skip ci]"
           if git push origin "HEAD:${{ github.ref_name }}" 2>/dev/null; then
             echo "pushed directly to ${{ github.ref_name }}"
