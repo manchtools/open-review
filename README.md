@@ -65,19 +65,19 @@ Actions / GitLab, with a codemap job that handles branch-protected `main`) is in
 
 | Variable | Meaning |
 |---|---|
-| `LLM_BASE_URL` | OpenAI-compatible router endpoint |
-| `LLM_API_KEY` | router key (unset → static-only; not an error) |
-| `MODEL` / `MODEL_GENERATE` | generate-stage model (cheap recall) |
-| `MODEL_EVALUATE` | evaluate-stage model (unset → stage skipped) |
-| `MODEL_JUDGE` | judge-stage model (unset → stage skipped) |
-| `MODEL_DESCRIBE` | cheap model for codemap `--describe` (falls back to generate) |
-| `MODEL_REPAIR` | cheap model to repair truncated tool output (falls back to describe/generate) |
-| `LLM_MAX_TOKENS` | output-token cap (default 8000; lower for small models) |
-| `LLM_PROVIDER` | comma-separated provider preference order, e.g. `StreamLake,DeepSeek` |
-| `LLM_PROVIDER_FALLBACK` | bool (default `true`) — allow other providers when a preferred one can't serve a model |
-| `OPEN_REVIEW_CONCURRENCY` | parallel baseline batches after the cache is warmed (default 4) |
-| `OPEN_REVIEW_BATCH_CHARS` | baseline batch size in chars (default 20000; lower to avoid truncation) |
-| `OPEN_REVIEW_TOOL_TIMEOUT` | per external-tool timeout, seconds (default 300) |
+| `OR_LLM_BASE_URL` | OpenAI-compatible router endpoint |
+| `OR_LLM_API_KEY` | router key (unset → static-only; not an error) |
+| `OR_MODEL` / `OR_MODEL_GENERATE` | generate-stage model (cheap recall) |
+| `OR_MODEL_EVALUATE` | evaluate-stage model (unset → stage skipped) |
+| `OR_MODEL_JUDGE` | judge-stage model (unset → stage skipped) |
+| `OR_MODEL_DESCRIBE` | cheap model for codemap `--describe` (falls back to generate) |
+| `OR_MODEL_REPAIR` | cheap model to repair truncated tool output (falls back to describe/generate) |
+| `OR_LLM_MAX_TOKENS` | output-token cap (default 8000; lower for small models) |
+| `OR_LLM_PROVIDER` | comma-separated provider preference order, e.g. `StreamLake,DeepSeek` |
+| `OR_LLM_PROVIDER_FALLBACK` | bool (default `true`) — allow other providers when a preferred one can't serve a model |
+| `OR_CONCURRENCY` | parallel baseline batches after the cache is warmed (default 4) |
+| `OR_BATCH_CHARS` | baseline batch size in chars (default 20000; lower to avoid truncation) |
+| `OR_TOOL_TIMEOUT` | per external-tool timeout, seconds (default 300) |
 
 Base ref auto-resolves from CI env (`GITHUB_BASE_REF`, `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`),
 falling back to `origin/main`; override with `--base`. For fork/untrusted PRs use `--untrusted`
@@ -87,7 +87,7 @@ falling back to `origin/main`; override with `--base`. For fork/untrusted PRs us
 
 The big cacheable payload is the codemap prefix sent to the generate model. Routers like
 OpenRouter load-balance a model across upstreams, and the prompt cache is **per-provider** — so
-pin `LLM_PROVIDER` to one that caches (keep `LLM_PROVIDER_FALLBACK=true` so an Anthropic judge
+pin `OR_LLM_PROVIDER` to one that caches (keep `OR_LLM_PROVIDER_FALLBACK=true` so an Anthropic judge
 still routes to Anthropic). The baseline warms the cache with the first batch, then fans the
 rest out concurrently. Cache reuse is logged (`· router: N cached prompt token(s)`).
 

@@ -155,10 +155,10 @@ def test_codemap_ai_descriptions_opt_in_and_iterate(fake_router, tmp_path, monke
     _git(tmp_path, "init", "-q")
     _git(tmp_path, "add", ".")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("LLM_BASE_URL", base_url)
-    monkeypatch.setenv("LLM_API_KEY", "k")
-    monkeypatch.setenv("MODEL", "fake")
-    for v in ("MODEL_GENERATE", "MODEL_EVALUATE", "MODEL_JUDGE"):
+    monkeypatch.setenv("OR_LLM_BASE_URL", base_url)
+    monkeypatch.setenv("OR_LLM_API_KEY", "k")
+    monkeypatch.setenv("OR_MODEL", "fake")
+    for v in ("OR_MODEL_GENERATE", "OR_MODEL_EVALUATE", "OR_MODEL_JUDGE"):
         monkeypatch.delenv(v, raising=False)
     ctl({"descriptions": [{"id": 0, "text": "Doubles the input."}]})
 
@@ -169,7 +169,7 @@ def test_codemap_ai_descriptions_opt_in_and_iterate(fake_router, tmp_path, monke
 
     # iterate: persist the map, drop the router entirely, regenerate — reuse must be self-sufficient
     codemap.write(".", doc)
-    monkeypatch.delenv("LLM_API_KEY")
+    monkeypatch.delenv("OR_LLM_API_KEY")
     doc2 = codemap.generate(".", describe=True)
     assert "Doubles the input." in doc2
 

@@ -34,22 +34,22 @@ That's it — open a PR and the review runs.
 
 | Variable | Meaning |
 |---|---|
-| `LLM_BASE_URL` | OpenAI-compatible router base URL |
-| `LLM_API_KEY` | router key (never logged; pass via secret) |
-| `MODEL_GENERATE` | cheap recall model (also aliased by `MODEL`) |
-| `MODEL_EVALUATE` | mid-stage culler (optional; skip to collapse the cascade) |
-| `MODEL_JUDGE` | final judge — verifies each finding against the code (optional) |
-| `MODEL_DESCRIBE` | cheap model for codemap `--describe` (falls back to `MODEL_GENERATE`) |
-| `LLM_MAX_TOKENS` | output-token cap (default 8000; lower for small models) |
-| `LLM_PROVIDER` | comma-separated provider preference order, e.g. `DeepSeek,Together` |
-| `LLM_PROVIDER_FALLBACK` | bool, default `true` — allow other providers when a preferred one can't serve a model |
+| `OR_LLM_BASE_URL` | OpenAI-compatible router base URL |
+| `OR_LLM_API_KEY` | router key (never logged; pass via secret) |
+| `OR_MODEL_GENERATE` | cheap recall model (also aliased by `OR_MODEL`) |
+| `OR_MODEL_EVALUATE` | mid-stage culler (optional; skip to collapse the cascade) |
+| `OR_MODEL_JUDGE` | final judge — verifies each finding against the code (optional) |
+| `OR_MODEL_DESCRIBE` | cheap model for codemap `--describe` (falls back to `OR_MODEL_GENERATE`) |
+| `OR_LLM_MAX_TOKENS` | output-token cap (default 8000; lower for small models) |
+| `OR_LLM_PROVIDER` | comma-separated provider preference order, e.g. `DeepSeek,Together` |
+| `OR_LLM_PROVIDER_FALLBACK` | bool, default `true` — allow other providers when a preferred one can't serve a model |
 | `--fail-on {note,warning,error,off}` | gate threshold for the exit code (default `warning`) |
 
 ### Provider routing & caching
 
 The big cacheable payload is the codemap prefix sent to the generate/baseline model. Pinning
-`LLM_PROVIDER=DeepSeek` routes those to DeepSeek's own endpoint (which holds the prompt cache).
-Keep `LLM_PROVIDER_FALLBACK=true` (the default) so the **Opus judge still works** — an Anthropic
+`OR_LLM_PROVIDER=DeepSeek` routes those to DeepSeek's own endpoint (which holds the prompt cache).
+Keep `OR_LLM_PROVIDER_FALLBACK=true` (the default) so the **Opus judge still works** — an Anthropic
 model can't be served by DeepSeek, so it falls through to Anthropic automatically. One list,
 mixed models, no per-stage config. Cache hits are logged (`· router: N cached prompt token(s)`).
 
@@ -61,5 +61,5 @@ within the provider's cache TTL.
 
 For fork/untrusted PRs, run with `run --untrusted`: repo instructions and the codemap are read
 from the **base branch**, never the PR head, so a PR can't rewrite the reviewer that judges it.
-Keep `LLM_API_KEY` out of fork-triggered jobs (use `pull_request_target` carefully or gate on
+Keep `OR_LLM_API_KEY` out of fork-triggered jobs (use `pull_request_target` carefully or gate on
 label) — the container also scrubs secrets from its own read-only toolbox subprocesses.

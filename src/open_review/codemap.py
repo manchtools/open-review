@@ -30,7 +30,7 @@ CODEMAP_PATH = ".open-review/codemap.md"
 # docref: end codemap-path
 
 # Per external-tool call, in seconds — bounds ast-grep/ctags on huge repos (configurable).
-_CMD_TIMEOUT = int(os.environ.get("OPEN_REVIEW_TOOL_TIMEOUT", "300"))
+_CMD_TIMEOUT = int(os.environ.get("OR_TOOL_TIMEOUT", "300"))
 
 _AI_PREFIX = "_(ai)_ "  # marks a line as an AI-generated description (vs the author's own doc)
 
@@ -576,7 +576,7 @@ def _describe(
     description whenever the symbol's signature is unchanged, so iterate only spends tokens on
     new/changed symbols. The whole symbol **body** (from its ctags line range) is sent so the
     description reflects what the code does, not just its name. Runs on a cheap, configurable
-    model (`MODEL_DESCRIBE`, else `MODEL_GENERATE`/`MODEL`), batched under a char budget;
+    model (`OR_MODEL_DESCRIBE`, else `OR_MODEL_GENERATE`/`MODEL`), batched under a char budget;
     no-ops if the router is unset."""
     result: dict[tuple[str, str], str] = {}
     needers: list[tuple[str, str, str]] = []
@@ -593,9 +593,9 @@ def _describe(
     if not needers or not router.is_configured():
         return result
     model = (
-        os.environ.get("MODEL_DESCRIBE")
-        or os.environ.get("MODEL_GENERATE")
-        or os.environ.get("MODEL")
+        os.environ.get("OR_MODEL_DESCRIBE")
+        or os.environ.get("OR_MODEL_GENERATE")
+        or os.environ.get("OR_MODEL")
     )
     if not model:
         return result

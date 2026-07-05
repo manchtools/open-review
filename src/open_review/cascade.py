@@ -1,8 +1,8 @@
 """Multi-model cascade (Spec §Cascade; AC-13, AC-14, AC-15).
 
 generate (cheap, recall) → evaluate (cull obvious junk) → judge (adjudicate the few
-survivors). Per-stage models come from ``MODEL_GENERATE`` / ``MODEL_EVALUATE`` /
-``MODEL_JUDGE`` (``MODEL`` aliases generate); an unset stage is skipped so the cascade
+survivors). Per-stage models come from ``OR_MODEL_GENERATE`` / ``OR_MODEL_EVALUATE`` /
+``OR_MODEL_JUDGE`` (``MODEL`` aliases generate); an unset stage is skipped so the cascade
 collapses gracefully (AC-14). The evaluate/judge stages see ONLY the candidate findings,
 never the full diff — that's what keeps the big models cheap (AC-13). A dropped finding is
 retained and tagged with the stage and reason rather than removed (AC-15).
@@ -85,9 +85,9 @@ VERDICT_TOOL = {
 def stage_models() -> dict[str, str | None]:
     """Resolve the per-stage model from env; None means the stage is skipped (AC-14)."""
     return {
-        "generate": os.environ.get("MODEL_GENERATE") or os.environ.get("MODEL"),
-        "evaluate": os.environ.get("MODEL_EVALUATE"),
-        "judge": os.environ.get("MODEL_JUDGE"),
+        "generate": os.environ.get("OR_MODEL_GENERATE") or os.environ.get("OR_MODEL"),
+        "evaluate": os.environ.get("OR_MODEL_EVALUATE"),
+        "judge": os.environ.get("OR_MODEL_JUDGE"),
     }
 
 

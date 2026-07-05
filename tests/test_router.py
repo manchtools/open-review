@@ -4,11 +4,11 @@ from open_review import router
 
 
 def test_max_tokens_default_and_override(monkeypatch):
-    monkeypatch.delenv("LLM_MAX_TOKENS", raising=False)
+    monkeypatch.delenv("OR_LLM_MAX_TOKENS", raising=False)
     assert router._max_tokens() == 8000
-    monkeypatch.setenv("LLM_MAX_TOKENS", "4096")
+    monkeypatch.setenv("OR_LLM_MAX_TOKENS", "4096")
     assert router._max_tokens() == 4096
-    monkeypatch.setenv("LLM_MAX_TOKENS", "not-a-number")
+    monkeypatch.setenv("OR_LLM_MAX_TOKENS", "not-a-number")
     assert router._max_tokens() == 8000  # bad value falls back, never crashes
 
 
@@ -41,35 +41,35 @@ def test_salvage_complete_array_missing_outer_brace():
 
 def test_ai_repair_noop_without_model(monkeypatch):
     """The AI-repair fallback is off (returns None) unless a repair-capable model is configured."""
-    for v in ("MODEL_REPAIR", "MODEL_DESCRIBE", "MODEL_GENERATE", "MODEL"):
+    for v in ("OR_MODEL_REPAIR", "OR_MODEL_DESCRIBE", "OR_MODEL_GENERATE", "OR_MODEL"):
         monkeypatch.delenv(v, raising=False)
     tool = {"function": {"parameters": {"properties": {"findings": {"type": "array"}}}}}
     assert router._ai_repair('{"findings":[{"broken', tool) is None
 
 
 def test_extra_body_provider_passthrough(monkeypatch):
-    monkeypatch.delenv("LLM_PROVIDER", raising=False)
-    monkeypatch.delenv("LLM_PROVIDER_FALLBACK", raising=False)
+    monkeypatch.delenv("OR_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("OR_LLM_PROVIDER_FALLBACK", raising=False)
     assert router._extra_body() == {}  # unset → no routing constraint
 
     # comma-separated list → ordered preference; fallback defaults true (keeps Opus working)
-    monkeypatch.setenv("LLM_PROVIDER", "DeepSeek, Together")
+    monkeypatch.setenv("OR_LLM_PROVIDER", "DeepSeek, Together")
     assert router._extra_body() == {
         "provider": {"order": ["DeepSeek", "Together"], "allow_fallbacks": True}
     }
 
-    # LLM_PROVIDER_FALLBACK bool is human-friendly
-    monkeypatch.setenv("LLM_PROVIDER_FALLBACK", "false")
+    # OR_LLM_PROVIDER_FALLBACK bool is human-friendly
+    monkeypatch.setenv("OR_LLM_PROVIDER_FALLBACK", "false")
     assert router._extra_body("deepseek/deepseek-v4-pro")["provider"]["allow_fallbacks"] is False
-    monkeypatch.setenv("LLM_PROVIDER_FALLBACK", "yes")
+    monkeypatch.setenv("OR_LLM_PROVIDER_FALLBACK", "yes")
     assert router._extra_body("deepseek/deepseek-v4-pro")["provider"]["allow_fallbacks"] is True
 
 
 def test_extra_body_skips_anthropic_models(monkeypatch):
     """Model-aware: an Anthropic/Claude model (the judge) is never pinned to a DeepSeek host,
     so a hard pin (fallback=false) is safe — the judge still reaches Anthropic."""
-    monkeypatch.setenv("LLM_PROVIDER", "StreamLake")
-    monkeypatch.setenv("LLM_PROVIDER_FALLBACK", "false")
+    monkeypatch.setenv("OR_LLM_PROVIDER", "StreamLake")
+    monkeypatch.setenv("OR_LLM_PROVIDER_FALLBACK", "false")
     assert router._extra_body("deepseek/deepseek-v4-pro")["provider"]["order"] == ["StreamLake"]
     assert router._extra_body("anthropic/claude-opus-4.8") == {}
     assert router._extra_body("some/claude-model") == {}

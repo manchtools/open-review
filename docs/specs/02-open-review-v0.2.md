@@ -12,9 +12,9 @@ Three invariants constrain every feature here:
   level must change the behaviour of *every* reviewer without editing a single CI job. So every
   behaviour is read from the environment; CLI flags remain only as per-invocation overrides.
   Where a capability implies intent, the mere presence of its credential/value **auto-enables** it
-  (a `GITHUB_TOKEN` on a PR ⇒ post the review; `OPEN_REVIEW_SARIF=path` ⇒ write SARIF). The CI
+  (a `GITHUB_TOKEN` on a PR ⇒ post the review; `OR_SARIF=path` ⇒ write SARIF). The CI
   templates pass **all `OR_*` org variables through generically** (stripping the prefix), so a new
-  `OR_OPEN_REVIEW_SUMMARY=true` reaches the container as `OPEN_REVIEW_SUMMARY=true` with no job edit.
+  `OR_OR_SUMMARY=true` reaches the container as `OR_SUMMARY=true` with no job edit.
 - **The CI-agnostic core is untouched.** The exit code + `findings.json` seam remain the universal
   contract. Everything that writes back to a PR is an optional, capability-gated emitter — absent
   its credential it is skipped, never an error.
@@ -28,13 +28,13 @@ Grouped by feature; `[P7x]` marks the delivery sub-phase. Each is verifiable by 
 ### Environment-driven configuration `[P7c]`
 - **AC-CFG1** Given a behaviour setting, when open-review resolves it, then the precedence is
   **explicit CLI flag → environment variable → built-in default**. Every current flag has an env
-  equivalent: `OPEN_REVIEW_FAIL_ON`, `OPEN_REVIEW_SARIF`, `OPEN_REVIEW_GITLAB_REPORT`,
-  `OPEN_REVIEW_DESCRIBE`, `OPEN_REVIEW_LIGHT`, `OPEN_REVIEW_UNTRUSTED`, `OPEN_REVIEW_COMMIT` — and
+  equivalent: `OR_FAIL_ON`, `OR_SARIF`, `OR_GITLAB_REPORT`,
+  `OR_DESCRIBE`, `OR_LIGHT`, `OR_UNTRUSTED`, `OR_COMMIT` — and
   the v0.2 additions below. Setting the env var alone (no flag) changes behaviour.
 - **AC-CFG2** Given a credential/value that implies a feature, when a run starts, then the feature
   **auto-enables**: a `GITHUB_TOKEN` on a pull request enables the GitHub review emitter;
-  `OPEN_REVIEW_SARIF=<path>` enables SARIF; etc. A feature can be force-disabled with its explicit
-  env flag (e.g. `OPEN_REVIEW_GITHUB_REVIEW=off`).
+  `OR_SARIF=<path>` enables SARIF; etc. A feature can be force-disabled with its explicit
+  env flag (e.g. `OR_GITHUB_REVIEW=off`).
 - **AC-CFG3** Given the CI templates, when they run, then they export every `OR_*` repo/org
   variable into the container with the `OR_` prefix stripped, so org-level settings drive all
   reviewers without editing any job.
@@ -53,7 +53,7 @@ The model already produces a `suggestion` (replacement code) per finding; v0.2 s
   open-review comment is **updated in place** (stable marker), not duplicated.
 
 ### PR summary / walkthrough + change diagram `[P7b]`
-- **AC-5** Given `OPEN_REVIEW_SUMMARY` (or a token on a PR), when review runs, then a concise
+- **AC-5** Given `OR_SUMMARY` (or a token on a PR), when review runs, then a concise
   markdown summary of the PR (what changed, notable risks, affected areas) is generated from the
   diff by a cheap model, written to a file, and — when a token is present — posted as a single PR
   comment updated in place on re-runs.
@@ -64,7 +64,7 @@ The model already produces a `suggestion` (replacement code) per finding; v0.2 s
 ### Confidence scores `[P7c]`
 - **AC-7** Given the judge stage, when it keeps a finding, then it assigns a `confidence`
   (`low|medium|high`) stored on the `Finding` and rendered in stdout, annotations, and SARIF.
-- **AC-8** Given `OPEN_REVIEW_MIN_CONFIDENCE` (or `--min-confidence`), when reporting, then findings
+- **AC-8** Given `OR_MIN_CONFIDENCE` (or `--min-confidence`), when reporting, then findings
   below the level are moved to the discarded section (retained + tagged), not deleted.
 
 ### Path-based instructions `[P7c]`
@@ -91,7 +91,7 @@ The model already produces a `suggestion` (replacement code) per finding; v0.2 s
   or `.open-review/state.json`). A first run with no cursor falls back to a full diff review.
 
 ### Suggested unit tests `[P7e]`
-- **AC-15** Given `OPEN_REVIEW_SUGGEST_TESTS`, when review runs on changed code lacking a test, then
+- **AC-15** Given `OR_SUGGEST_TESTS`, when review runs on changed code lacking a test, then
   open-review discovers the repo's test conventions (via the read-only toolbox reading sibling
   tests) and produces a unit test, carried in the finding's `suggestion`. It is a proposal a human
   commits — never auto-added.
@@ -115,7 +115,7 @@ The model already produces a `suggestion` (replacement code) per finding; v0.2 s
 ## Technical design
 
 - **Config layer**: a small resolver (`config.setting(name, cli, default)`) reads env then flag;
-  argparse defaults are seeded from `OPEN_REVIEW_*`. Capability gates (`token → review`) resolve at
+  argparse defaults are seeded from `OR_*`. Capability gates (`token → review`) resolve at
   runtime. Applied to current flags **now** (v0.1.x) and to v0.2 additions.
 - **CI templates**: a pre-step exports `${{ toJSON(vars) }}` entries matching `OR_*` into `$GITHUB_ENV`
   with the prefix stripped; the run step passes the container `--env-file` / inherits them.
@@ -143,7 +143,7 @@ The model already produces a `suggestion` (replacement code) per finding; v0.2 s
 | Scenario | AC |
 |---|---|
 | setting resolves flag → env → default; env alone changes behaviour | AC-CFG1 |
-| token-on-PR auto-enables review; `OPEN_REVIEW_GITHUB_REVIEW=off` disables | AC-CFG2 |
+| token-on-PR auto-enables review; `OR_GITHUB_REVIEW=off` disables | AC-CFG2 |
 | CI pass-through maps `OR_X` → `X` | AC-CFG3 |
 | all findings in ONE PR comment, grouped, with suggestion blocks; updated (not duplicated) on re-run | AC-1, AC-4 |
 | SARIF carries a fix region for a finding with a suggestion | AC-2 |

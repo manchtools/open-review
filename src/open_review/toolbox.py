@@ -2,7 +2,7 @@
 
 The model selects and parameterizes these allowlisted, non-networking commands; it never
 emits raw shell. Subprocess actions (grep, find_callers, show_definition, blame) run in a
-scrubbed environment (``env -i``-style: only PATH/HOME/LANG, no ``LLM_API_KEY`` or CI
+scrubbed environment (``env -i``-style: only PATH/HOME/LANG, no ``OR_LLM_API_KEY`` or CI
 secret — AC-10). All model-supplied paths are confined to the repo root and symbols must
 be valid identifiers. Cross-language retrieval uses ast-grep, so no language runtime is
 required (AC-12). Every action returns a string; an invalid request returns an

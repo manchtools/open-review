@@ -1,27 +1,20 @@
 # open-review on GitLab CI — merge into .gitlab-ci.yml of the repo you want reviewed.
-# Config comes from GROUP-level CI/CD variables (prefixed OR_), so nothing is per-repo:
-#   OR_LLM_API_KEY (masked)  OR_LLM_BASE_URL  OR_MODEL_GENERATE  OR_MODEL_EVALUATE
-#   OR_MODEL_JUDGE  OR_MODEL_DESCRIBE  OR_LLM_PROVIDER  OR_LLM_PROVIDER_FALLBACK
+# Config comes from GROUP-level CI/CD variables prefixed OR_ (OR_LLM_API_KEY masked, plus
+# OR_LLM_BASE_URL, OR_MODEL_*, OR_LLM_PROVIDER, OR_* behaviour flags, …). GitLab injects every
+# CI/CD variable into the job environment, and open-review reads OR_* natively — so there is no
+# per-variable mapping and adding a new OR_ group variable needs no YAML change.
 
 open-review:
   image:
     name: ghcr.io/manchtools/open-review:latest
-    entrypoint: [""]           # let us call the CLI directly
+    entrypoint: [""]           # call the CLI directly
   rules:
     - if: $CI_MERGE_REQUEST_IID
   variables:
-    LLM_BASE_URL: "$OR_LLM_BASE_URL"
-    LLM_API_KEY: "$OR_LLM_API_KEY"
-    MODEL_GENERATE: "$OR_MODEL_GENERATE"
-    MODEL_EVALUATE: "$OR_MODEL_EVALUATE"
-    MODEL_JUDGE: "$OR_MODEL_JUDGE"
-    MODEL_DESCRIBE: "$OR_MODEL_DESCRIBE"
-    LLM_PROVIDER: "$OR_LLM_PROVIDER"
-    LLM_PROVIDER_FALLBACK: "$OR_LLM_PROVIDER_FALLBACK"
     GIT_DEPTH: 0               # full history so the diff base resolves
   script:
-    # CI_MERGE_REQUEST_TARGET_BRANCH_NAME is read automatically for the diff base.
-    - open-review run --fail-on warning --gitlab-report gl-code-quality.json
+    # gate, sarif, provider pin, etc. all come from the OR_* group variables.
+    - open-review run --gitlab-report gl-code-quality.json
   artifacts:
     reports:
       codequality: gl-code-quality.json

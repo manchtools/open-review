@@ -12,16 +12,16 @@ def test_allowlist_rejects_unknown_action():
 
 
 def test_scrubbed_env_excludes_secrets(monkeypatch):
-    monkeypatch.setenv("LLM_API_KEY", "sk-secret")
+    monkeypatch.setenv("OR_LLM_API_KEY", "sk-secret")
     monkeypatch.setenv("GITHUB_TOKEN", "ghp-secret")
     env = toolbox._scrubbed_env()
-    assert "LLM_API_KEY" not in env
+    assert "OR_LLM_API_KEY" not in env
     assert "GITHUB_TOKEN" not in env
     assert "PATH" in env  # tools still resolvable
 
 
 def test_executor_spawns_without_secrets(tmp_path, monkeypatch):
-    monkeypatch.setenv("LLM_API_KEY", "sk-secret")
+    monkeypatch.setenv("OR_LLM_API_KEY", "sk-secret")
     (tmp_path / "a.py").write_text("def foo():\n    return 1\nfoo()\n")
     monkeypatch.chdir(tmp_path)
     captured = {}
@@ -34,7 +34,7 @@ def test_executor_spawns_without_secrets(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", spy)
     toolbox.run_action("find_callers", {"symbol": "foo"}, ".")  # spawns ast-grep
     assert captured.get("env") is not None
-    assert "LLM_API_KEY" not in captured["env"]
+    assert "OR_LLM_API_KEY" not in captured["env"]
 
 
 def test_find_callers_cross_language(tmp_path, monkeypatch):

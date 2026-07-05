@@ -10,7 +10,7 @@ def _f(msg, line, sev="warning"):
 
 def test_cascade_collapses_without_stage_models(monkeypatch):
     """AC-14: with no evaluate/judge model set, findings pass through untouched."""
-    for v in ("MODEL_EVALUATE", "MODEL_JUDGE"):
+    for v in ("OR_MODEL_EVALUATE", "OR_MODEL_JUDGE"):
         monkeypatch.delenv(v, raising=False)
     findings = [_f("keep", 1)]
     out = cascade.apply(findings)
@@ -35,12 +35,12 @@ def test_cascade_evaluate_drops_and_retains(fake_router, tmp_path, monkeypatch):
     """AC-13/AC-15: evaluate adjudicates the candidates; a dropped finding is kept + tagged."""
     base_url, ctl = fake_router
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("LLM_BASE_URL", base_url)
-    monkeypatch.setenv("LLM_API_KEY", "k")
-    monkeypatch.setenv("MODEL", "gen")
-    monkeypatch.setenv("MODEL_EVALUATE", "eval")
-    monkeypatch.delenv("MODEL_JUDGE", raising=False)
-    monkeypatch.delenv("MODEL_GENERATE", raising=False)
+    monkeypatch.setenv("OR_LLM_BASE_URL", base_url)
+    monkeypatch.setenv("OR_LLM_API_KEY", "k")
+    monkeypatch.setenv("OR_MODEL", "gen")
+    monkeypatch.setenv("OR_MODEL_EVALUATE", "eval")
+    monkeypatch.delenv("OR_MODEL_JUDGE", raising=False)
+    monkeypatch.delenv("OR_MODEL_GENERATE", raising=False)
     ctl.script(
         ("report", {"summary": "s", "findings": [
             {"file": "a.py", "line": 1, "severity": "warning", "category": "bug",

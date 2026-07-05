@@ -144,7 +144,7 @@ def _to_findings(items: list[dict], model: str) -> list[Finding]:
 
 def _max_steps() -> int:
     try:
-        return max(1, int(os.environ.get("OPEN_REVIEW_MAX_STEPS", "20")))
+        return max(1, int(os.environ.get("OR_MAX_STEPS", "20")))
     except ValueError:
         return 20
 
@@ -176,11 +176,11 @@ def run(
     repo: str,
 ) -> list[Finding]:
     if not router.is_configured():
-        print("· open-review: no LLM_API_KEY — skipping AI stage")
+        print("· open-review: no OR_LLM_API_KEY — skipping AI stage")
         return []
-    model = os.environ.get("MODEL_GENERATE") or os.environ.get("MODEL")
+    model = os.environ.get("OR_MODEL_GENERATE") or os.environ.get("OR_MODEL")
     if not model:
-        print("· open-review: no MODEL / MODEL_GENERATE — skipping AI stage")
+        print("· open-review: no OR_MODEL / OR_MODEL_GENERATE — skipping AI stage")
         return []
 
     system, user = _prompt(diff, static_findings, codemap, instructions)
@@ -270,15 +270,15 @@ def baseline(
     One forced-`report` call per file-batch — NO investigation loop, so the message history never
     grows. The system prompt + codemap is a byte-identical prefix across every batch, so it lands
     in the provider's cache. Batch 1 runs alone to *warm* that cache, then the rest fan out
-    concurrently (bounded by `OPEN_REVIEW_CONCURRENCY`, default 4) so they hit the warm cache and
+    concurrently (bounded by `OR_CONCURRENCY`, default 4) so they hit the warm cache and
     finish in ~one batch's wall-clock. The cascade judges the aggregated union a single time.
     """
     if not router.is_configured():
-        print("· open-review: no LLM_API_KEY — skipping AI baseline", file=sys.stderr)
+        print("· open-review: no OR_LLM_API_KEY — skipping AI baseline", file=sys.stderr)
         return []
-    model = os.environ.get("MODEL_GENERATE") or os.environ.get("MODEL")
+    model = os.environ.get("OR_MODEL_GENERATE") or os.environ.get("OR_MODEL")
     if not model:
-        print("· open-review: no MODEL / MODEL_GENERATE — skipping AI baseline", file=sys.stderr)
+        print("· open-review: no OR_MODEL / OR_MODEL_GENERATE — skipping AI baseline", file=sys.stderr)
         return []
 
     prefix = _system(instructions)
@@ -286,7 +286,7 @@ def baseline(
         prefix += f"\n\nRepository architecture (codemap):\n{codemap}"
 
     try:
-        budget = max(1000, int(os.environ.get("OPEN_REVIEW_BATCH_CHARS", "20000")))
+        budget = max(1000, int(os.environ.get("OR_BATCH_CHARS", "20000")))
     except ValueError:
         budget = 20000
     batches = list(_read_batches(files, repo, budget))
@@ -297,7 +297,7 @@ def baseline(
         rest = batches[1:]
         if rest:
             try:
-                conc = max(1, int(os.environ.get("OPEN_REVIEW_CONCURRENCY", "4")))
+                conc = max(1, int(os.environ.get("OR_CONCURRENCY", "4")))
             except ValueError:
                 conc = 4
             with ThreadPoolExecutor(max_workers=conc) as ex:

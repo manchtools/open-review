@@ -5,10 +5,10 @@ from open_review.findings import Finding
 
 
 def _env(monkeypatch, base_url, model="fake-model"):
-    monkeypatch.setenv("LLM_BASE_URL", base_url)
-    monkeypatch.setenv("LLM_API_KEY", "test-key")
-    monkeypatch.setenv("MODEL", model)
-    for v in ("MODEL_GENERATE", "MODEL_EVALUATE", "MODEL_JUDGE"):
+    monkeypatch.setenv("OR_LLM_BASE_URL", base_url)
+    monkeypatch.setenv("OR_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("OR_MODEL", model)
+    for v in ("OR_MODEL_GENERATE", "OR_MODEL_EVALUATE", "OR_MODEL_JUDGE"):
         monkeypatch.delenv(v, raising=False)
 
 
@@ -29,7 +29,7 @@ def test_ai_run_parses_findings_from_tool_call(fake_router, monkeypatch):
 
 
 def test_ai_run_skips_without_key(monkeypatch, capsys):
-    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("OR_LLM_API_KEY", raising=False)
     out = ai.run("some diff", [], None, None, ".")
     assert out == []
     assert "skip" in capsys.readouterr().out.lower()
@@ -66,7 +66,7 @@ def test_loop_caps_at_max_steps(fake_router, tmp_path, monkeypatch):
     (tmp_path / "a.py").write_text("foo()\n")
     monkeypatch.chdir(tmp_path)
     _env(monkeypatch, base_url)
-    monkeypatch.setenv("OPEN_REVIEW_MAX_STEPS", "3")
+    monkeypatch.setenv("OR_MAX_STEPS", "3")
     ctl.script(("tool", "find_callers", {"symbol": "foo"}))  # never reports → repeats
     out = ai.run("diff", [], None, None, ".")
     assert out == []

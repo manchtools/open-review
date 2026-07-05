@@ -9,9 +9,9 @@ def test_run_end_to_end_gates_on_warning(git_repo, fake_router, monkeypatch, cap
     path, base = git_repo
     base_url, _ = fake_router
     monkeypatch.chdir(path)
-    monkeypatch.setenv("LLM_BASE_URL", base_url)
-    monkeypatch.setenv("LLM_API_KEY", "k")
-    monkeypatch.setenv("MODEL", "fake-model")
+    monkeypatch.setenv("OR_LLM_BASE_URL", base_url)
+    monkeypatch.setenv("OR_LLM_API_KEY", "k")
+    monkeypatch.setenv("OR_MODEL", "fake-model")
 
     code = cli.main(["run", "--base", base])
 
@@ -22,9 +22,9 @@ def test_run_end_to_end_gates_on_warning(git_repo, fake_router, monkeypatch, cap
 def test_run_config_error_missing_base_url_exits_2(git_repo, monkeypatch):
     path, base = git_repo
     monkeypatch.chdir(path)
-    monkeypatch.setenv("LLM_API_KEY", "k")          # key set...
-    monkeypatch.delenv("LLM_BASE_URL", raising=False)  # ...but no router URL
-    monkeypatch.setenv("MODEL", "m")
+    monkeypatch.setenv("OR_LLM_API_KEY", "k")          # key set...
+    monkeypatch.delenv("OR_LLM_BASE_URL", raising=False)  # ...but no router URL
+    monkeypatch.setenv("OR_MODEL", "m")
 
     assert cli.main(["run", "--base", base]) == 2
 
@@ -48,7 +48,7 @@ def test_run_reports_static_findings(tmp_path, monkeypatch, capsys):
     g("commit", "-qm", "secret")
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("LLM_API_KEY", raising=False)  # AI skipped → isolates the static path
+    monkeypatch.delenv("OR_LLM_API_KEY", raising=False)  # AI skipped → isolates the static path
 
     code = cli.main(["run", "--base", base])
 

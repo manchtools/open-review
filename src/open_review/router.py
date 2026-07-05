@@ -1,6 +1,6 @@
 """OpenAI-compatible router client (Spec §Technical design; AC-2, AC-3).
 
-Wraps the ``openai`` SDK pointed at ``LLM_BASE_URL`` so any router (LiteLLM,
+Wraps the ``openai`` SDK pointed at ``OR_LLM_BASE_URL`` so any router (LiteLLM,
 OpenRouter, self-hosted) works unchanged. A forced tool call yields structured
 findings/verdicts.
 """
@@ -18,14 +18,14 @@ from .errors import OperationalError
 
 def is_configured() -> bool:
     """True iff a router API key is present — else the AI stage is skipped (AC-3)."""
-    return bool(os.environ.get("LLM_API_KEY"))
+    return bool(os.environ.get("OR_LLM_API_KEY"))
 
 
 def _max_tokens() -> int:
-    """Output-token cap, configurable via `LLM_MAX_TOKENS`. Small/cheap models (e.g. a cheap
-    `MODEL_DESCRIBE`) cap below the old hardcoded 8000 and would 400 — this lets them be set."""
+    """Output-token cap, configurable via `OR_LLM_MAX_TOKENS`. Small/cheap models (e.g. a cheap
+    `OR_MODEL_DESCRIBE`) cap below the old hardcoded 8000 and would 400 — this lets them be set."""
     try:
-        return int(os.environ.get("LLM_MAX_TOKENS", "8000"))
+        return int(os.environ.get("OR_LLM_MAX_TOKENS", "8000"))
     except ValueError:
         return 8000
 
@@ -33,22 +33,22 @@ def _max_tokens() -> int:
 def _extra_body(model: str = "") -> dict:
     """OpenRouter provider routing, from human-friendly env:
 
-      LLM_PROVIDER           comma-separated provider names in preference order, e.g. "StreamLake"
-      LLM_PROVIDER_FALLBACK  bool — allow other providers when a preferred one can't serve the model
+      OR_LLM_PROVIDER           comma-separated provider names in preference order, e.g. "StreamLake"
+      OR_LLM_PROVIDER_FALLBACK  bool — allow other providers when a preferred one can't serve the model
 
     The pin is **model-aware**: an Anthropic/Claude model (the judge) is never pinned to a
     DeepSeek-family host (OpenRouter 404s on that), so it routes to its own provider. That is what
-    makes a *hard* pin safe — set `LLM_PROVIDER_FALLBACK=false` and every DeepSeek request sticks to
+    makes a *hard* pin safe — set `OR_LLM_PROVIDER_FALLBACK=false` and every DeepSeek request sticks to
     one provider (cache locality: the codemap prefix hits the *same* provider's cache each time,
     instead of scattering across hosts under concurrency), while the Opus judge still reaches
-    Anthropic. Unset LLM_PROVIDER → no routing constraint."""
-    order = [p.strip() for p in os.environ.get("LLM_PROVIDER", "").split(",") if p.strip()]
+    Anthropic. Unset OR_LLM_PROVIDER → no routing constraint."""
+    order = [p.strip() for p in os.environ.get("OR_LLM_PROVIDER", "").split(",") if p.strip()]
     if not order:
         return {}
     m = model.lower()
     if "claude" in m or m.startswith("anthropic/"):
         return {}  # judge: leave unpinned so it routes to Anthropic even with fallback off
-    fallback = os.environ.get("LLM_PROVIDER_FALLBACK", "true").strip().lower() not in (
+    fallback = os.environ.get("OR_LLM_PROVIDER_FALLBACK", "true").strip().lower() not in (
         "0", "false", "no", "off",
     )
     return {"provider": {"order": order, "allow_fallbacks": fallback}}
@@ -163,12 +163,12 @@ _REPAIR_SYSTEM = (
 def _ai_repair(raw: str, tool: dict) -> dict | None:
     """Last-resort repair: hand the broken string to a cheap model whose forced tool schema
     guarantees valid structured output. Only used when deterministic salvage recovered nothing;
-    off unless a repair model is configured (`MODEL_REPAIR`, else describe/generate/`MODEL`)."""
+    off unless a repair model is configured (`OR_MODEL_REPAIR`, else describe/generate/`MODEL`)."""
     model = (
-        os.environ.get("MODEL_REPAIR")
-        or os.environ.get("MODEL_DESCRIBE")
-        or os.environ.get("MODEL_GENERATE")
-        or os.environ.get("MODEL")
+        os.environ.get("OR_MODEL_REPAIR")
+        or os.environ.get("OR_MODEL_DESCRIBE")
+        or os.environ.get("OR_MODEL_GENERATE")
+        or os.environ.get("OR_MODEL")
     )
     if not model:
         return None
@@ -181,11 +181,11 @@ def _ai_repair(raw: str, tool: dict) -> dict | None:
 def call_tool(model: str, system: str, user: str, tool: dict, repair: bool = True) -> dict | None:
     """One forced-tool-call round trip; returns the parsed tool arguments, or None
     if the model returned no tool call (AC-2)."""
-    base_url = os.environ.get("LLM_BASE_URL")
+    base_url = os.environ.get("OR_LLM_BASE_URL")
     if not base_url:
-        raise OperationalError("LLM_API_KEY is set but LLM_BASE_URL is not")
+        raise OperationalError("OR_LLM_API_KEY is set but OR_LLM_BASE_URL is not")
 
-    client = OpenAI(base_url=base_url, api_key=os.environ["LLM_API_KEY"])
+    client = OpenAI(base_url=base_url, api_key=os.environ["OR_LLM_API_KEY"])
     resp = client.chat.completions.create(
         model=model,
         max_tokens=_max_tokens(),
@@ -224,11 +224,11 @@ def call_tool(model: str, system: str, user: str, tool: dict, repair: bool = Tru
 def chat(model: str, messages: list, tools: list):
     """One tool-enabled turn (tool_choice=auto); returns the assistant message so the
     caller can run any tool calls and continue the loop (AC-11)."""
-    base_url = os.environ.get("LLM_BASE_URL")
+    base_url = os.environ.get("OR_LLM_BASE_URL")
     if not base_url:
-        raise OperationalError("LLM_API_KEY is set but LLM_BASE_URL is not")
+        raise OperationalError("OR_LLM_API_KEY is set but OR_LLM_BASE_URL is not")
 
-    client = OpenAI(base_url=base_url, api_key=os.environ["LLM_API_KEY"])
+    client = OpenAI(base_url=base_url, api_key=os.environ["OR_LLM_API_KEY"])
     resp = client.chat.completions.create(
         model=model, max_tokens=_max_tokens(), messages=messages, tools=tools,
         tool_choice="auto", extra_body=_extra_body(model),

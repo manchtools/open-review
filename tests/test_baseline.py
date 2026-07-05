@@ -8,10 +8,10 @@ from open_review import ai, cli
 
 
 def _env(monkeypatch, base_url, model="fake-model"):
-    monkeypatch.setenv("LLM_BASE_URL", base_url)
-    monkeypatch.setenv("LLM_API_KEY", "k")
-    monkeypatch.setenv("MODEL", model)
-    for v in ("MODEL_GENERATE", "MODEL_EVALUATE", "MODEL_JUDGE"):
+    monkeypatch.setenv("OR_LLM_BASE_URL", base_url)
+    monkeypatch.setenv("OR_LLM_API_KEY", "k")
+    monkeypatch.setenv("OR_MODEL", model)
+    for v in ("OR_MODEL_GENERATE", "OR_MODEL_EVALUATE", "OR_MODEL_JUDGE"):
         monkeypatch.delenv(v, raising=False)
 
 
@@ -37,7 +37,7 @@ def test_baseline_command_writes_codemap_and_findings(tmp_path, monkeypatch):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("LLM_API_KEY", raising=False)  # AI skipped → static-only baseline
+    monkeypatch.delenv("OR_LLM_API_KEY", raising=False)  # AI skipped → static-only baseline
 
     code = cli.main(["baseline", "--out", "base.json"])
 
